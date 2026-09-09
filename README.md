@@ -1,91 +1,140 @@
-# Welcome to your Lovable project
+# ROOMi — Web Client
 
-## Project info
+**React SPA for the ROOMi booking platform.** Property discovery and filtering, availability-aware booking flow, guest and agent dashboards, multilingual UI, and live notifications over WebSocket.
 
-**URL**: https://lovable.dev/projects/1169db3a-30f3-49bc-bd0b-9cda42ae0ebe
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-5-646CFF?logo=vite&logoColor=white)
+![Apollo](https://img.shields.io/badge/Apollo_Client-4-311C87?logo=apollographql&logoColor=white)
+![Tailwind](https://img.shields.io/badge/Tailwind-3.4-06B6D4?logo=tailwindcss&logoColor=white)
 
-## How can I edit this code?
+> API server: **[ROOMi-backend](https://github.com/myx-codes/ROOMi-backend)**
 
-There are several ways of editing your application.
+---
 
-**Use Lovable**
+## About this project
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/1169db3a-30f3-49bc-bd0b-9cda42ae0ebe) and start prompting.
+The client half of ROOMi, a personal project built to practise the parts of frontend work that a component demo never reaches: a typed data layer that cannot drift from the API, filter state that belongs in the URL, forms with real validation, and a UI that stays correct when the server pushes changes underneath it.
 
-Changes made via Lovable will be committed automatically to this repo.
+It has not served production traffic. Everything below describes what is implemented in this repository.
 
-**Use your preferred IDE**
+---
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+## What it does
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+**Property discovery.** Search by location, date range, category, price band, minimum rating, and amenities. Filters compose into a single GraphQL query and update results without a page reload.
 
-Follow these steps:
+**Booking flow.** Date selection is checked against server-side availability before a reservation is submitted, so double bookings are rejected at the source rather than caught after the fact.
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+**Role-scoped dashboards.** Guests manage bookings, favourites, and profile. Agents manage listings, reservations, and earnings. Each area is gated by the role encoded in the session.
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+**Live notifications.** A Socket.IO connection delivers booking and status events as they happen.
 
-# Step 3: Install the necessary dependencies.
-npm i
+**Internationalisation.** English, Korean, and Uzbek across navigation, listings, booking flows, and account pages, switchable without a reload.
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+---
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph App["React 18 + Vite"]
+        Router["React Router 6<br/>route-level code splitting"]
+        UI["Radix UI primitives<br/>+ Tailwind design tokens"]
+        Forms["React Hook Form<br/>+ Zod schemas"]
+    end
+    Apollo["Apollo Client 4<br/>normalised cache"]
+    Codegen["GraphQL Codegen<br/>typed documents"]
+    Socket["Socket.IO client"]
+    API["ROOMi GraphQL API"]
+
+    Router --> UI
+    UI --> Forms
+    UI --> Apollo
+    Codegen -.->|"generates types from schema"| Apollo
+    Apollo -->|"queries / mutations"| API
+    Socket <-->|"live events"| API
 ```
 
-**Edit a file directly in GitHub**
+**Typed data layer.** `graphql-codegen` reads the server schema and emits typed documents and hooks. A field renamed on the server becomes a compile error here, not a runtime `undefined` discovered by a user.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+**Cache as state.** Apollo's normalised cache is the source of truth for server data, so a booking confirmed in one view updates every other view referencing it, without a separate global store.
 
-**Use GitHub Codespaces**
+**Accessible primitives.** UI is composed from Radix UI, which supplies keyboard navigation, focus management, and ARIA semantics for dialogs, menus, and form controls, styled with Tailwind rather than reimplemented.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+**Validated forms.** React Hook Form with Zod resolvers keeps validation rules in one schema shared by the form and the type system.
 
-## What technologies are used for this project?
+---
 
-This project is built with:
+## Tech stack
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+| Layer | Technologies |
+|---|---|
+| Framework | React 18, TypeScript 5.8 |
+| Build | Vite 5, `@vitejs/plugin-react-swc` |
+| Data | Apollo Client 4, GraphQL Codegen |
+| Routing | React Router 6 |
+| UI | Radix UI, Tailwind CSS 3.4, Lucide icons, Framer Motion |
+| Forms | React Hook Form, Zod |
+| Real-time | Socket.IO client |
+| Charts | Recharts |
+| Tooling | ESLint, TypeScript ESLint, PostCSS |
 
-## How can I deploy this project?
+---
 
-Simply open [Lovable](https://lovable.dev/projects/1169db3a-30f3-49bc-bd0b-9cda42ae0ebe) and click on Share -> Publish.
+## Getting started
 
-## Can I connect a custom domain to my Lovable project?
+### Prerequisites
 
-Yes, you can!
+- Node.js 20+
+- A running [ROOMi-backend](https://github.com/myx-codes/ROOMi-backend) instance
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+### Setup
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+```bash
+git clone https://github.com/myx-codes/ROOMi-frontend.git
+cd ROOMi-frontend
+npm install
+```
 
+Create `.env` in the project root:
 
-Commands to run ROOMi project
+```
+VITE_API_URL=http://localhost:3000/graphql
+VITE_SOCKET_URL=http://localhost:3000
+```
 
-# bir marta bo'ladi, network yo'q bo'lsa
-docker network create web
+### Run
 
-# shared edge proxy
-cd /home/muhammad95/infra/nginx
-docker-compose up -d
+```bash
+npm run dev        # development server
+npm run codegen    # regenerate types after a schema change
+npm run build      # production bundle
+npm run preview    # serve the production build locally
+npm run lint
+```
 
-# ROOMi backend
-cd /home/muhammad95/ROOMi/backend/ROOMi
-docker-compose up -d
+Run `npm run codegen` whenever the backend schema changes — the generated types are committed and the build depends on them.
 
-# ROOMi frontend
-cd /home/muhammad95/ROOMi/frontend/roomi
-docker-compose up -d
+---
+
+## Repository layout
+
+```
+src/
+  components/    reusable UI, built on Radix primitives
+  pages/         route-level views
+  graphql/       queries, mutations, generated types
+  hooks/         shared React hooks
+  lib/           utilities and configuration
+  locales/       en / ko / uz translation resources
+codegen.yml      GraphQL Codegen configuration
+```
+
+---
+
+## Author
+
+**Mukhammadyusuf Kholbajonov** — Backend / Full-Stack Engineer
+MSc Computer Engineering, Dongguk University, Seoul
+[GitHub](https://github.com/myx-codes)
