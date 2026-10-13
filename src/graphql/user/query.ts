@@ -79,6 +79,7 @@ export const GET_PROPERTY = gql`
       manualMultiplierOverride
       propertySquare
       propertyBeds
+      maxGuests
       propertyRooms
       propertyViews
       propertyLikes

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { matchPath, useLocation } from 'react-router-dom'
+import { Link, matchPath, useLocation } from 'react-router-dom'
 import { useMutation, useQuery } from '@apollo/client/react'
-import { Bot, Loader2, MessageSquare, Send, Sparkles, X } from 'lucide-react'
+import { ArrowUpRight, Bot, Loader2, MapPin, MessageSquare, Send, Sparkles, Users, X } from 'lucide-react'
 import { ENSURE_CHAT_THREAD, GET_CHAT_THREAD, SEND_CHAT_MESSAGE } from '@/graphql/chat'
+import { GET_PROPERTY } from '@/graphql/user/query'
 import { getMemberProfile } from '@/lib/auth'
+import { resolvePropertyImageUrl } from '@/lib/property'
 import { useI18n } from '@/i18n'
 
 type ChatSenderType = 'USER' | 'ASSISTANT' | 'SYSTEM'
@@ -78,6 +80,142 @@ type ChatBubbleProps = {
   senderType: ChatSenderType
   content: string
   createdAt?: string
+  language: string
+}
+
+type ParsedRecommendation = {
+  propertyId: string
+  fallbackTitle: string
+  rawLine: string
+}
+
+type RecommendationPropertyResponse = {
+  getProperty: {
+    _id: string
+    propertyTitle: string
+    propertyType: string
+    propertyLocation: string
+    propertyPrice: number
+    propertyBeds: number
+    maxGuests?: number | null
+    propertyImages: string[]
+  }
+}
+
+function parseRecommendationContent(content: string): {
+  body: string
+  recommendations: ParsedRecommendation[]
+} {
+  const recommendations: ParsedRecommendation[] = []
+  const bodyLines: string[] = []
+
+  for (const line of content.split('\n')) {
+    const pathMatch = line.match(/\/properties\/([a-f\d]{24})\b/i)
+    if (!pathMatch) {
+      bodyLines.push(line)
+      continue
+    }
+
+    const titlePart = line
+      .replace(/^\s*\d+[.)]\s*/, '')
+      .split(/\s+[—–-]\s+/)[0]
+      .trim()
+
+    recommendations.push({
+      propertyId: pathMatch[1],
+      fallbackTitle: titlePart || 'ROOMi property',
+      rawLine: line,
+    })
+  }
+
+  return {
+    body: bodyLines.join('\n').trim(),
+    recommendations,
+  }
+}
+
+function resolveChatLanguage(message: string, selectedLanguage: string): string {
+  return /[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]/.test(message.normalize('NFC'))
+    ? 'ko'
+    : selectedLanguage
+}
+
+function PropertyRecommendationCard({
+  recommendation,
+  language,
+}: {
+  recommendation: ParsedRecommendation
+  language: string
+}) {
+  const { data, loading } = useQuery<RecommendationPropertyResponse>(GET_PROPERTY, {
+    variables: { propertyId: recommendation.propertyId },
+    fetchPolicy: 'cache-first',
+  })
+  const property = data?.getProperty
+  const title = property?.propertyTitle || recommendation.fallbackTitle
+  const image = resolvePropertyImageUrl(property?.propertyImages?.[0])
+  const locale = language === 'ko' ? 'ko-KR' : language === 'uz' ? 'uz-UZ' : 'en-US'
+  const price = property?.propertyPrice
+    ? `${new Intl.NumberFormat(locale).format(property.propertyPrice)} UZS`
+    : recommendation.rawLine.match(/[\d,]+\s*UZS/i)?.[0] || ''
+  const capacity = property?.maxGuests || property?.propertyBeds
+  const copy = language === 'ko'
+    ? { perNight: '/ 박', guests: '명', details: '상세 보기' }
+    : language === 'uz'
+      ? { perNight: '/ tun', guests: 'kishi', details: 'Batafsil' }
+      : { perNight: '/ night', guests: 'guests', details: 'View details' }
+
+  return (
+    <Link
+      to={`/properties/${recommendation.propertyId}`}
+      className="group block overflow-hidden rounded-2xl border border-border bg-background shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+      aria-label={`${copy.details}: ${title}`}
+    >
+      <div className="relative h-28 overflow-hidden bg-muted">
+        {loading ? (
+          <div className="flex h-full items-center justify-center">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <img
+            src={image}
+            alt={title}
+            loading="lazy"
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
+        )}
+        {property?.propertyType ? (
+          <span className="absolute left-2 top-2 rounded-full bg-background/90 px-2 py-1 text-[10px] font-semibold tracking-wide text-foreground backdrop-blur">
+            {property.propertyType}
+          </span>
+        ) : null}
+      </div>
+
+      <div className="space-y-2 p-3">
+        <div className="flex items-start justify-between gap-2">
+          <h4 className="line-clamp-2 text-sm font-semibold leading-tight text-foreground">{title}</h4>
+          <ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+          {property?.propertyLocation ? (
+            <span className="inline-flex items-center gap-1">
+              <MapPin className="h-3 w-3" /> {property.propertyLocation}
+            </span>
+          ) : null}
+          {capacity ? (
+            <span className="inline-flex items-center gap-1">
+              <Users className="h-3 w-3" /> {capacity} {copy.guests}
+            </span>
+          ) : null}
+        </div>
+        {price ? (
+          <p className="text-xs text-muted-foreground">
+            <strong className="text-sm text-foreground">{price}</strong> {copy.perNight}
+          </p>
+        ) : null}
+      </div>
+    </Link>
+  )
 }
 
 const CHAT_SESSION_KEY = 'roomi_chat_session_id'
@@ -108,19 +246,35 @@ function usePropertyChatContext(): string | null {
   }, [location.pathname])
 }
 
-function ChatBubble({ senderType, content }: ChatBubbleProps) {
+function ChatBubble({ senderType, content, language }: ChatBubbleProps) {
   const isAssistant = senderType !== 'USER'
+  const contentLanguage = resolveChatLanguage(content, language)
+  const parsed = isAssistant
+    ? parseRecommendationContent(content)
+    : { body: content, recommendations: [] }
+  const hasRecommendations = parsed.recommendations.length > 0
 
   return (
     <div className={`flex ${isAssistant ? 'justify-start' : 'justify-end'}`}>
       <div
-        className={`max-w-[82%] rounded-2xl px-3 py-2 text-sm leading-relaxed shadow-sm ${
+        className={`${hasRecommendations ? 'w-full max-w-full' : 'max-w-[82%]'} rounded-2xl px-3 py-2 text-sm leading-relaxed shadow-sm ${
           isAssistant
             ? 'bg-muted text-foreground border border-border'
             : 'bg-primary text-primary-foreground'
         }`}
       >
-        {content}
+        {parsed.body ? <p className="whitespace-pre-wrap">{parsed.body}</p> : null}
+        {hasRecommendations ? (
+          <div className={`${parsed.body ? 'mt-3' : ''} grid gap-2`}>
+            {parsed.recommendations.map((recommendation) => (
+              <PropertyRecommendationCard
+                key={recommendation.propertyId}
+                recommendation={recommendation}
+                language={contentLanguage}
+              />
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   )
@@ -260,7 +414,7 @@ export function ChatbotWidget() {
             propertyId: propertyId ?? null,
             threadId: thread?._id ?? null,
             message: clean,
-            language,
+            language: resolveChatLanguage(clean, language),
           },
         },
       })
@@ -312,7 +466,7 @@ export function ChatbotWidget() {
             ) : hasMessages ? (
               <>
                 {messages.map((item) => (
-                  <ChatBubble key={item._id} senderType={item.senderType} content={item.content} />
+                  <ChatBubble key={item._id} senderType={item.senderType} content={item.content} language={language} />
                 ))}
                 {awaitingAssistantId ? (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
