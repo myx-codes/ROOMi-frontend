@@ -121,7 +121,7 @@ export default function AgentBookings() {
   const bookingsCountLabel = typeof totalCount === 'number' ? totalCount : allBookings.length
 
   const filterTabs: Array<{ key: 'ALL' | BookingStatus; label: string; count: number }> = [
-    { key: 'ALL', label: 'All', count: bookingStats.total },
+    { key: 'ALL', label: t('common.all'), count: bookingStats.total },
     { key: 'CONFIRMED', label: bookingStatusShortLabel('CONFIRMED'), count: bookingStats.CONFIRMED },
     { key: 'WAITING', label: bookingStatusShortLabel('WAITING'), count: bookingStats.WAITING },
     { key: 'CANCELLED', label: bookingStatusShortLabel('CANCELLED'), count: bookingStats.CANCELLED },
@@ -137,19 +137,19 @@ export default function AgentBookings() {
 
       <div className="grid gap-4 md:grid-cols-4 mb-6">
         <div className="rounded-2xl border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground">Total</p>
+          <p className="text-xs text-muted-foreground">{t('common.total')}</p>
           <p className="mt-2 font-display text-2xl font-bold text-foreground">{formatNumber(bookingStats.total)}</p>
         </div>
         <div className="rounded-2xl border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground">Confirmed</p>
+          <p className="text-xs text-muted-foreground">{bookingStatusShortLabel('CONFIRMED')}</p>
           <p className="mt-2 font-display text-2xl font-bold text-foreground">{formatNumber(bookingStats.CONFIRMED)}</p>
         </div>
         <div className="rounded-2xl border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground">Waiting</p>
+          <p className="text-xs text-muted-foreground">{bookingStatusShortLabel('WAITING')}</p>
           <p className="mt-2 font-display text-2xl font-bold text-foreground">{formatNumber(bookingStats.WAITING)}</p>
         </div>
         <div className="rounded-2xl border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground">Finished</p>
+          <p className="text-xs text-muted-foreground">{bookingStatusShortLabel('FINISHED')}</p>
           <p className="mt-2 font-display text-2xl font-bold text-foreground">{formatNumber(bookingStats.FINISHED)}</p>
         </div>
       </div>
@@ -157,7 +157,7 @@ export default function AgentBookings() {
       <div className="mb-6 flex flex-wrap gap-2 rounded-2xl border border-border bg-card/70 p-3">
         <div className="flex items-center gap-2 mr-2 text-xs text-muted-foreground">
           <Filter className="h-4 w-4" />
-          Filter:
+          {t('agent.filter')}:
         </div>
         {filterTabs.map((tab) => {
           const active = statusFilter === tab.key
@@ -200,7 +200,7 @@ export default function AgentBookings() {
                   </p>
                 </div>
                 <div className="text-sm text-muted-foreground">{b.checkIn} → {b.checkOut}</div>
-                <div className="text-sm font-semibold text-foreground">${formatNumber(b.total)}</div>
+                <div className="text-sm font-semibold text-foreground">{formatNumber(b.total)} UZS</div>
                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${cfg.color}`}>
                   <Icon className="w-3.5 h-3.5" />{bookingStatusShortLabel(b.status)}
                 </span>

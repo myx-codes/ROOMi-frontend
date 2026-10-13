@@ -33,7 +33,7 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-background">
       <Navbar forceSolid />
-      <div className="pt-28 md:pt-32">
+      <div className="roomi-dashboard-shell">
         <DashboardLayout
           title={t('admin.dashboard')}
           navItems={navItems}

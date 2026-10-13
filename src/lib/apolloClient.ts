@@ -9,9 +9,11 @@ const CSRF_STORAGE_KEY = 'csrfToken'
 
 const GRAPHQL_URL =
   import.meta.env.VITE_GRAPHQL_URL ||
-  (typeof window !== 'undefined'
-    ? `${window.location.protocol}//${window.location.hostname}:3008/graphql`
-    : 'http://localhost:3008/graphql')
+  (import.meta.env.PROD
+    ? '/graphql'
+    : typeof window !== 'undefined'
+      ? `${window.location.protocol}//${window.location.hostname}:3008/graphql`
+      : 'http://localhost:3008/graphql')
 
 const httpLink = new HttpLink({
   uri: GRAPHQL_URL,
@@ -39,6 +41,7 @@ function getCsrfToken(): string {
   return (
     getCookieValue('XSRF-TOKEN') ||
     getCookieValue('CSRF-TOKEN') ||
+    getCookieValue('roomi_csrf_token') ||
     getCookieValue('csrfToken') ||
     getCookieValue('_csrf') ||
     window.localStorage.getItem('XSRF-TOKEN') ||

@@ -6,7 +6,15 @@ import { GET_ALL_PROPERTIES_BY_ADMIN } from '@/graphql/user/query'
 import { REMOVE_PROPERTY_BY_ADMIN, UPDATE_PROPERTY_BY_ADMIN } from '@/graphql/user/mutation'
 import { useI18n } from '@/i18n'
 
-type PropertyStatus = 'ACTIVE' | 'HOLD' | 'DELETE' | 'BOOKED'
+type PropertyStatus =
+  | 'DRAFT'
+  | 'PENDING_REVIEW'
+  | 'ACTIVE'
+  | 'SUSPENDED'
+  | 'ARCHIVED'
+  | 'HOLD'
+  | 'DELETE'
+  | 'BOOKED'
 
 type AdminProperty = {
   _id: string
@@ -128,12 +136,12 @@ export default function AdminProperties() {
     setUpdatingPropertyId(property._id)
 
     try {
-      if (property.propertyStatus !== 'ACTIVE' && property.propertyStatus !== 'HOLD') {
+      if (!['ACTIVE', 'PENDING_REVIEW', 'SUSPENDED', 'HOLD'].includes(property.propertyStatus)) {
         setActionError(t('admin.onlyActiveHoldToggle'))
         return
       }
 
-      const nextStatus: PropertyStatus = property.propertyStatus === 'ACTIVE' ? 'HOLD' : 'ACTIVE'
+      const nextStatus: PropertyStatus = property.propertyStatus === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE'
       await updatePropertyByAdmin({
         variables: {
           input: {
@@ -196,9 +204,12 @@ export default function AdminProperties() {
           className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none"
         >
           <option value="ALL">{t('admin.allStatuses')}</option>
+          <option value="DRAFT">{propertyStatusLabel('DRAFT')}</option>
+          <option value="PENDING_REVIEW">{propertyStatusLabel('PENDING_REVIEW')}</option>
           <option value="ACTIVE">{propertyStatusLabel('ACTIVE')}</option>
+          <option value="SUSPENDED">{propertyStatusLabel('SUSPENDED')}</option>
+          <option value="ARCHIVED">{propertyStatusLabel('ARCHIVED')}</option>
           <option value="HOLD">{propertyStatusLabel('HOLD')}</option>
-          <option value="BOOKED">{propertyStatusLabel('BOOKED')}</option>
           <option value="DELETE">{propertyStatusLabel('DELETE')}</option>
         </select>
       </div>

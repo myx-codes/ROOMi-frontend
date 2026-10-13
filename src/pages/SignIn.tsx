@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Footer } from '@/components/Footer'
 import { LOGIN } from '@/graphql/user/mutation'
 import { CHECK_AUTH } from '@/graphql/user/query'
 import { useI18n } from '@/i18n'
@@ -103,6 +104,7 @@ export default function SignIn() {
   }
 
   return (
+    <>
     <div className="min-h-screen bg-background flex">
       {/* Left — Imagery */}
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
@@ -256,5 +258,7 @@ export default function SignIn() {
         </motion.div>
       </div>
     </div>
+    <Footer />
+    </>
   )
 }

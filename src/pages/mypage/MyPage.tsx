@@ -56,7 +56,7 @@ export default function MyPage() {
   return (
     <div className="min-h-screen bg-background">
       <Navbar forceSolid />
-      <div className="pt-20">
+      <div className="roomi-dashboard-shell">
         <DashboardLayout
           title={isAgent ? t('agent.dashboard') : t('myPage.myAccount')}
           navItems={isAgent ? agentNavItems : navItems}

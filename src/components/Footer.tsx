@@ -1,8 +1,11 @@
 import { Link } from 'react-router-dom'
-import { useI18n } from '@/i18n'
+import { useState } from 'react'
+import { ChevronDown, Globe2 } from 'lucide-react'
+import { languageOptions, useI18n } from '@/i18n'
 
 export function Footer() {
-  const { t } = useI18n()
+  const { language, setLanguage, t } = useI18n()
+  const [languageOpen, setLanguageOpen] = useState(false)
 
   const exploreLinks = [
     { label: t('categories.villasTitle'), to: '/properties?category=villa' },
@@ -25,56 +28,79 @@ export function Footer() {
   ]
 
   return (
-    <footer className="px-6 pb-8 pt-4">
-      <div className="mx-auto max-w-7xl overflow-hidden rounded-[2.5rem] bg-[#0d1f1c] px-6 py-12 text-primary-foreground shadow-[0_28px_80px_-44px_rgba(7,14,12,0.85)] sm:px-10">
-        <div className="grid gap-10 border-b border-white/10 pb-10 lg:grid-cols-[1.2fr_0.8fr_0.8fr]">
-          <div className="max-w-md">
-            <div className="inline-flex items-center gap-3 rounded-full border border-white/10 bg-white/6 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-[#f1d8b3]">
-              {t('footer.eyebrow')}
-            </div>
-            <span className="mt-6 block font-display text-3xl font-bold tracking-tight text-white sm:text-4xl">
-              ROOM<span className="text-gold">i</span>
-            </span>
-            <p className="mt-4 text-sm leading-7 text-white/62">
-              {t('footer.description')}
-            </p>
+    <footer className="border-t border-[#ebebeb] bg-white text-[#222]">
+      <div className="mx-auto max-w-[1440px] px-6 py-10 sm:px-10 lg:px-12 lg:py-12">
+        <div className="grid gap-10 border-b border-[#ebebeb] pb-10 sm:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr] lg:gap-16">
+          <div className="max-w-sm">
+            <Link to="/properties" className="inline-flex items-center gap-2 text-[22px] font-extrabold tracking-[-0.06em] text-[#ff385c]" aria-label="ROOMi home">
+              <span className="grid h-8 w-8 rotate-[-12deg] place-items-center rounded-[50%_50%_50%_12%] bg-[#ff385c] font-serif text-[21px] font-bold leading-none text-white">r</span>
+              <span className="rotate-[-1deg]">ROOMi</span>
+            </Link>
+            <p className="mt-4 max-w-xs text-sm leading-6 text-[#717171]">{t('footer.description')}</p>
+            <p className="mt-4 text-xs font-semibold uppercase tracking-[0.14em] text-[#717171]">{t('footer.eyebrow')}</p>
           </div>
 
           <div>
-            <h4 className="font-display text-lg font-semibold text-white">{t('footer.explore')}</h4>
-            <div className="mt-5 space-y-3 text-sm text-white/60">
+            <h4 className="text-sm font-extrabold text-[#222]">{t('footer.explore')}</h4>
+            <nav className="mt-4 grid gap-3 text-sm text-[#717171]" aria-label={t('footer.explore')}>
               {exploreLinks.map((link) => (
-                <Link key={link.label} to={link.to} className="block transition-colors hover:text-white">
+                <Link key={link.label} to={link.to} className="w-fit transition-colors hover:text-[#222] hover:underline hover:underline-offset-4">
                   {link.label}
                 </Link>
               ))}
-            </div>
+            </nav>
           </div>
 
           <div>
-            <h4 className="font-display text-lg font-semibold text-white">{t('footer.account')}</h4>
-            <div className="mt-5 space-y-3 text-sm text-white/60">
+            <h4 className="text-sm font-extrabold text-[#222]">{t('footer.account')}</h4>
+            <nav className="mt-4 grid gap-3 text-sm text-[#717171]" aria-label={t('footer.account')}>
               {companyLinks.map((link) => (
-                <Link key={link.label} to={link.to} className="block transition-colors hover:text-white">
+                <Link key={link.label} to={link.to} className="w-fit transition-colors hover:text-[#222] hover:underline hover:underline-offset-4">
                   {link.label}
                 </Link>
               ))}
-            </div>
+            </nav>
           </div>
         </div>
 
-        <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-white/38">
-            © {new Date().getFullYear()} ROOMi. {t('footer.crafted')}
-          </p>
+        <div className="flex flex-col gap-5 pt-6 text-xs text-[#717171] sm:flex-row sm:items-center sm:justify-between">
+          <p>© {new Date().getFullYear()} ROOMi · {t('footer.crafted')}</p>
 
-          <div className="flex flex-wrap gap-2">
-            {socialLinks.map((link) => (
-              <a
-                key={link.label}
-                href={link.href}
-                className="rounded-full border border-white/10 bg-white/6 px-4 py-2 text-xs font-medium text-white/56 transition-colors hover:text-white"
+          <div className="flex flex-wrap items-center gap-5">
+            <div className="relative">
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 font-semibold text-[#222] hover:underline hover:underline-offset-4"
+                onClick={() => setLanguageOpen((open) => !open)}
+                aria-haspopup="menu"
+                aria-expanded={languageOpen}
+                aria-label={t('common.language')}
               >
+                <Globe2 size={15} />
+                {languageOptions.find((option) => option.code === language)?.labels[language]}
+                <ChevronDown size={14} />
+              </button>
+              {languageOpen && (
+                <div className="absolute bottom-full right-0 z-20 mb-3 min-w-40 rounded-xl border border-[#dddddd] bg-white p-1.5 text-sm shadow-[0_8px_24px_rgba(0,0,0,.14)]" role="menu">
+                  {languageOptions.map((option) => (
+                    <button
+                      key={option.code}
+                      type="button"
+                      role="menuitem"
+                      className={`block w-full rounded-lg px-3 py-2 text-left transition-colors hover:bg-[#f7f7f7] ${language === option.code ? 'font-bold text-[#ff385c]' : 'text-[#222]'}`}
+                      onClick={() => {
+                        setLanguage(option.code)
+                        setLanguageOpen(false)
+                      }}
+                    >
+                      {option.labels[language]}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {socialLinks.map((link) => (
+              <a key={link.label} href={link.href} className="font-semibold text-[#222] transition-colors hover:text-[#ff385c] hover:underline hover:underline-offset-4">
                 {link.label}
               </a>
             ))}

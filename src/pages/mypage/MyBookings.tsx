@@ -1,11 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useQuery } from '@apollo/client/react'
+import { useMutation, useQuery } from '@apollo/client/react'
 import { CheckCircle, Clock, XCircle, CircleDot, MapPin } from 'lucide-react'
 import { GET_MY_BOOKINGS, GET_PROPERTIES } from '@/graphql/user/query'
+import { CANCEL_BOOKING } from '@/graphql/user/mutation'
 import { useI18n } from '@/i18n'
 import { getMemberProfile } from '@/lib/auth'
 
-type BookingStatus = 'CONFIRMED' | 'WAITING' | 'CANCELLED' | 'FINISHED'
+type BookingStatus =
+  | 'REQUESTED'
+  | 'AWAITING_PAYMENT'
+  | 'CONFIRMED'
+  | 'COMPLETED'
+  | 'CANCELLED'
+  | 'EXPIRED'
+  | 'WAITING'
+  | 'FINISHED'
 
 type ApiBooking = {
   _id: string
@@ -16,6 +25,7 @@ type ApiBooking = {
   bookingCheckOut?: string | null
   bookingGuests: number
   totalPrice?: number | null
+  currency?: string | null
   bookingPrice?: number | null
   propertyId: string
   createdAt: string
@@ -66,43 +76,21 @@ type GetPropertiesVariables = {
 }
 
 const statusConfig = {
+  REQUESTED: { icon: Clock, color: 'text-gold bg-gold/20' },
+  AWAITING_PAYMENT: { icon: Clock, color: 'text-gold bg-gold/20' },
   CONFIRMED: { icon: CheckCircle, color: 'text-green-600 bg-green-100' },
   WAITING: { icon: Clock, color: 'text-gold bg-gold/20' },
   CANCELLED: { icon: XCircle, color: 'text-destructive bg-destructive/10' },
+  EXPIRED: { icon: XCircle, color: 'text-muted-foreground bg-muted' },
+  COMPLETED: { icon: CircleDot, color: 'text-muted-foreground bg-muted' },
   FINISHED: { icon: CircleDot, color: 'text-muted-foreground bg-muted' },
 }
 
-const CANCELLED_BOOKINGS_NAMESPACE = 'roomi_cancelled_bookings'
 const DELETED_BOOKINGS_NAMESPACE = 'roomi_deleted_bookings'
-
-function getCancelledBookingsStorageKey(): string {
-  const memberId = getMemberProfile()?._id?.trim() || 'guest'
-  return `${CANCELLED_BOOKINGS_NAMESPACE}_${memberId}`
-}
 
 function getDeletedBookingsStorageKey(): string {
   const memberId = getMemberProfile()?._id?.trim() || 'guest'
   return `${DELETED_BOOKINGS_NAMESPACE}_${memberId}`
-}
-
-function readLocallyCancelledBookingIds(): string[] {
-  if (typeof window === 'undefined') return []
-
-  try {
-    const raw = localStorage.getItem(getCancelledBookingsStorageKey())
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed)
-      ? parsed.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
-      : []
-  } catch {
-    return []
-  }
-}
-
-function writeLocallyCancelledBookingIds(ids: string[]): void {
-  if (typeof window === 'undefined') return
-  localStorage.setItem(getCancelledBookingsStorageKey(), JSON.stringify(Array.from(new Set(ids))))
 }
 
 function readLocallyDeletedBookingIds(): string[] {
@@ -150,12 +138,12 @@ function hasCheckInPassed(checkInRaw?: string | null): boolean {
 }
 
 function canCancelBooking(status: BookingStatus, checkInRaw?: string | null): boolean {
-  if (status !== 'CONFIRMED' && status !== 'WAITING') return false
+  if (!['REQUESTED', 'AWAITING_PAYMENT', 'CONFIRMED', 'WAITING'].includes(status)) return false
   return canCancelByDate(checkInRaw)
 }
 
 function canDeleteBooking(status: BookingStatus, checkInRaw?: string | null): boolean {
-  return status === 'CANCELLED' || hasCheckInPassed(checkInRaw)
+  return ['CANCELLED', 'EXPIRED', 'COMPLETED', 'FINISHED'].includes(status) || hasCheckInPassed(checkInRaw)
 }
 
 function formatLocation(value?: string | null): string {
@@ -170,12 +158,10 @@ function formatLocation(value?: string | null): string {
 export default function MyBookings() {
   const { t, formatDate, formatNumber, propertyTypeLabel, bookingStatusShortLabel } = useI18n()
   const [triedPageZero, setTriedPageZero] = useState(false)
-  const [locallyCancelledBookingIds, setLocallyCancelledBookingIds] = useState<string[]>(
-    readLocallyCancelledBookingIds,
-  )
   const [locallyDeletedBookingIds, setLocallyDeletedBookingIds] = useState<string[]>(
     readLocallyDeletedBookingIds,
   )
+  const [cancelBookingMutation, { loading: cancellingBooking }] = useMutation(CANCEL_BOOKING)
 
   const { data, loading, error, refetch } = useQuery<GetMyBookingsResponse, GetMyBookingsVariables>(GET_MY_BOOKINGS, {
     variables: {
@@ -209,21 +195,18 @@ export default function MyBookings() {
   }, [data, error, loading, refetch, triedPageZero])
 
   useEffect(() => {
-    writeLocallyCancelledBookingIds(locallyCancelledBookingIds)
-  }, [locallyCancelledBookingIds])
-
-  useEffect(() => {
     writeLocallyDeletedBookingIds(locallyDeletedBookingIds)
   }, [locallyDeletedBookingIds])
 
-  const cancelBooking = (bookingId: string, bookingStatus: BookingStatus, checkInRaw?: string | null) => {
+  const cancelBooking = async (bookingId: string, bookingStatus: BookingStatus, checkInRaw?: string | null) => {
     if (!canCancelBooking(bookingStatus, checkInRaw)) {
       const message = t('myPage.cancelAllowedUntil')
       window.alert(`${t('myPage.cannotCancelBooking')}: ${message}`)
       return
     }
 
-    setLocallyCancelledBookingIds((prev) => (prev.includes(bookingId) ? prev : [...prev, bookingId]))
+    await cancelBookingMutation({ variables: { bookingId } })
+    await refetch()
     window.alert(`${t('myPage.cancelledSuccessfully')}: ${t('myPage.bookingCancelled')}`)
   }
 
@@ -238,7 +221,6 @@ export default function MyBookings() {
     if (!confirmation) return
 
     setLocallyDeletedBookingIds((prev) => (prev.includes(bookingId) ? prev : [...prev, bookingId]))
-    setLocallyCancelledBookingIds((prev) => prev.filter((id) => id !== bookingId))
 
     window.alert(`${t('myPage.cancelledSuccessfully')}: ${t('myPage.bookingDeleteSuccess')}`)
   }
@@ -257,7 +239,6 @@ export default function MyBookings() {
 
         const checkInRaw = booking.bookingCheckIn || booking.bookingStart || null
         const checkOutRaw = booking.bookingCheckOut || booking.bookingEnd || null
-        const isLocallyCancelled = locallyCancelledBookingIds.includes(booking._id)
 
         return {
           id: booking._id,
@@ -269,11 +250,12 @@ export default function MyBookings() {
           bookedAt: booking.createdAt,
           guests: booking.bookingGuests,
           total: booking.totalPrice ?? booking.bookingPrice ?? 0,
-          status: isLocallyCancelled ? 'CANCELLED' as BookingStatus : booking.bookingStatus,
+          currency: booking.currency || 'UZS',
+          status: booking.bookingStatus,
         }
       })
     },
-    [data, locallyCancelledBookingIds, locallyDeletedBookingIds, propertiesData, propertyTypeLabel],
+    [data, locallyDeletedBookingIds, propertiesData, propertyTypeLabel],
   )
 
   return (
@@ -314,7 +296,7 @@ export default function MyBookings() {
                     <p className="text-xs text-muted-foreground mt-1">{t('common.bookedOn')}: {formatDate(b.bookedAt)}</p>
                   </div>
                   <div className="text-right">
-                    <p className="font-semibold text-foreground">${formatNumber(b.total)}</p>
+                    <p className="font-semibold text-foreground">{formatNumber(b.total)} {b.currency}</p>
                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium mt-1 ${cfg.color}`}>
                       <Icon className="w-3.5 h-3.5" />{bookingStatusShortLabel(b.status)}
                     </span>
@@ -322,7 +304,8 @@ export default function MyBookings() {
                       {!isCancelled && (
                         <button
                           type="button"
-                          onClick={() => cancelBooking(b.id, b.status, b.checkInRaw)}
+                          onClick={() => void cancelBooking(b.id, b.status, b.checkInRaw)}
+                          disabled={cancellingBooking}
                           className={`inline-flex items-center justify-center rounded-lg border px-3 py-1.5 text-xs font-semibold gentle-animation ${
                             canCancel
                               ? 'border-destructive/40 text-destructive hover:bg-destructive/10'

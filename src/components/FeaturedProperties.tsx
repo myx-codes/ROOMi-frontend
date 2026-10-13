@@ -126,9 +126,11 @@ type TranslateFn = (key: string, vars?: Record<string, string | number>) => stri
 const ENV = {
   GRAPHQL_URL:
     import.meta.env.VITE_GRAPHQL_URL ||
-    (typeof window !== 'undefined'
-      ? `${window.location.protocol}//${window.location.hostname}:3008/graphql`
-      : 'http://localhost:3008/graphql'),
+    (import.meta.env.PROD
+      ? '/graphql'
+      : typeof window !== 'undefined'
+        ? `${window.location.protocol}//${window.location.hostname}:3008/graphql`
+        : 'http://localhost:3008/graphql'),
 } as const
 
 // -----------------------------------------------------------------------------

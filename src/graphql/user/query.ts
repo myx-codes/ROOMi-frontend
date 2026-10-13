@@ -17,6 +17,10 @@ query GetProperties($input: PropertiesInquiry!) {
             propertyType
             propertyStatus
             propertyLocation
+            propertyCoordinates {
+              lat
+              lng
+            }
             propertyAddress
             propertyTitle
             propertyPrice
@@ -52,6 +56,83 @@ query GetProperties($input: PropertiesInquiry!) {
     }
 }
 `;
+
+// The detail page uses the same public listing query for recommendations so
+// ranking and availability rules stay server-backed instead of being mocked in
+// the browser.
+export const GET_RECOMMENDED_PROPERTIES = GET_PROPERTIES
+
+export const GET_PROPERTY = gql`
+  query GetProperty($propertyId: String!) {
+    getProperty(propertyId: $propertyId) {
+      _id
+      propertyType
+      propertyStatus
+      propertyLocation
+      propertyAddress
+      propertyTitle
+      propertyPrice
+      dynamicPricingEnabled
+      weekendMultiplier
+      minMultiplier
+      maxMultiplier
+      manualMultiplierOverride
+      propertySquare
+      propertyBeds
+      propertyRooms
+      propertyViews
+      propertyLikes
+      propertyComments
+      propertyRank
+      propertyRatingCount
+      propertyImages
+      propertyDesc
+      propertyRent
+      memberId
+      deletedAt
+      constructedAt
+      createdAt
+      updatedAt
+      meLiked {
+        memberId
+        likeRefId
+        myFavorite
+      }
+    }
+  }
+`
+
+export const GET_BOOKABLE_UNITS = gql`
+  query GetBookableUnits($propertyId: String!) {
+    getBookableUnits(propertyId: $propertyId) {
+      list {
+        _id
+        propertyId
+        unitType
+        name
+        code
+        inventoryCount
+        basePrice
+        rateModel
+        packageNights
+        packagePerPerson
+        bookingMode
+        maxGuests
+        includedGuests
+        bedrooms
+        beds
+        bathrooms
+        cleaningFee
+        petFee
+        extraGuestFee
+        petsAllowed
+        infantsAllowed
+        amenities
+        status
+      }
+    }
+  }
+`
 
 export const GET_PROPERTY_TYPES = gql`
   query GetPropertyTypes($input: PropertiesInquiry!) {
@@ -93,6 +174,20 @@ export const GET_PROPERTY_PRICE_PREVIEW = gql`
       baseTotal
       totalPrice
       averagePrice
+      quantity
+      billableGuests
+      unitId
+      unitName
+      unitType
+      rateModel
+      currency
+      nightlyTotal
+      cleaningFee
+      petFee
+      extraGuestFee
+      guestTotal
+      hostCommissionAmount
+      hostPayoutAmount
       dates {
         date
         basePrice
@@ -154,6 +249,7 @@ query GetMyBookings($input: BookingsInquiry!) {
             bookingStart
             bookingEnd
             totalPrice
+            currency
             bookingCheckIn
             bookingCheckOut
             bookingPrice

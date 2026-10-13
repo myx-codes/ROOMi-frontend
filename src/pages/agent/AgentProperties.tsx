@@ -10,7 +10,15 @@ import { getMemberProfile } from '@/lib/auth'
 import { amenityLabels } from '@/data/mockData'
 
 type PropertyType = 'VILLA' | 'HOTEL' | 'SANATORIUM'
-type PropertyStatus = 'ACTIVE' | 'HOLD' | 'BOOKED' | 'DELETE'
+type PropertyStatus =
+  | 'DRAFT'
+  | 'PENDING_REVIEW'
+  | 'ACTIVE'
+  | 'SUSPENDED'
+  | 'ARCHIVED'
+  | 'HOLD'
+  | 'BOOKED'
+  | 'DELETE'
 
 type CreatedProperty = {
   _id: string
@@ -186,9 +194,11 @@ type UploadMessages = {
 const FALLBACK_IMAGE = '/assets/hero-villa.jpg'
 const GRAPHQL_URL =
   import.meta.env.VITE_GRAPHQL_URL ||
-  (typeof window !== 'undefined'
-    ? `${window.location.protocol}//${window.location.hostname}:3008/graphql`
-    : 'http://localhost:3008/graphql')
+  (import.meta.env.PROD
+    ? '/graphql'
+    : typeof window !== 'undefined'
+      ? `${window.location.protocol}//${window.location.hostname}:3008/graphql`
+      : 'http://localhost:3008/graphql')
 const PROPERTY_DESC_MAX_LENGTH = 500
 const AGENT_PAGE_SIZE = 10
 const AMENITY_OPTIONS = Object.entries(amenityLabels)
@@ -256,10 +266,19 @@ function normalizePropertyTypeForForm(type?: string): PropertyType {
 
 function normalizePropertyStatusForForm(status?: string): PropertyStatus {
   const normalized = (status || '').toUpperCase()
-  if (normalized === 'ACTIVE' || normalized === 'HOLD' || normalized === 'BOOKED' || normalized === 'DELETE') {
+  if (
+    normalized === 'DRAFT' ||
+    normalized === 'PENDING_REVIEW' ||
+    normalized === 'ACTIVE' ||
+    normalized === 'SUSPENDED' ||
+    normalized === 'ARCHIVED' ||
+    normalized === 'HOLD' ||
+    normalized === 'BOOKED' ||
+    normalized === 'DELETE'
+  ) {
     return normalized
   }
-  return 'ACTIVE'
+  return 'PENDING_REVIEW'
 }
 
 function toLocalPropertyCard(item: CreatedProperty): LocalPropertyCard {
@@ -1261,12 +1280,12 @@ export default function AgentProperties() {
           <p className="mt-2 font-display text-2xl font-bold text-foreground">{formatNumber(propertyOverview.hold)}</p>
         </div>
         <div className="rounded-2xl border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground">Dynamic pricing</p>
+          <p className="text-xs text-muted-foreground">{t('agent.dynamicPricing')}</p>
           <p className="mt-2 font-display text-2xl font-bold text-foreground">{formatNumber(propertyOverview.dynamicPricing)}</p>
         </div>
         <div className="rounded-2xl border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground">Avg price</p>
-          <p className="mt-2 font-display text-2xl font-bold text-foreground">${formatNumber(propertyOverview.averagePrice)}</p>
+          <p className="text-xs text-muted-foreground">{t('agent.averagePrice')}</p>
+          <p className="mt-2 font-display text-2xl font-bold text-foreground">{formatNumber(propertyOverview.averagePrice)} UZS</p>
         </div>
       </div>
 
@@ -1616,6 +1635,12 @@ export default function AgentProperties() {
               >
                 {t('common.cancel')}
               </button>
+              <Link
+                to={`/agent/units/${p.id}`}
+                className="mt-2 flex w-full items-center justify-center rounded-xl border border-primary/30 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5"
+              >
+                Xonalar / inventory boshqaruvi
+              </Link>
             </div>
 
             {submitError && (
@@ -1663,9 +1688,12 @@ export default function AgentProperties() {
                 onChange={(e) => setEditForm((prev) => (prev ? { ...prev, propertyStatus: e.target.value as PropertyStatus } : prev))}
                 className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none"
               >
+                <option value="DRAFT">{propertyStatusLabel('DRAFT')}</option>
+                <option value="PENDING_REVIEW">{propertyStatusLabel('PENDING_REVIEW')}</option>
                 <option value="ACTIVE">{propertyStatusLabel('ACTIVE')}</option>
+                <option value="SUSPENDED">{propertyStatusLabel('SUSPENDED')}</option>
+                <option value="ARCHIVED">{propertyStatusLabel('ARCHIVED')}</option>
                 <option value="HOLD">{propertyStatusLabel('HOLD')}</option>
-                <option value="BOOKED">{propertyStatusLabel('BOOKED')}</option>
                 <option value="DELETE">{propertyStatusLabel('DELETE')}</option>
               </select>
             </div>
@@ -2075,7 +2103,7 @@ export default function AgentProperties() {
                   <span className="text-sm font-medium text-foreground">{p.rating.toFixed(1)}</span>
                   <span className="text-xs text-muted-foreground">({Math.max(0, p.ratingCount)})</span>
                 </div>
-                <span className="font-semibold text-foreground">${formatNumber(p.price)}{t('common.perNight')}</span>
+                <span className="font-semibold text-foreground">{formatNumber(p.price)} UZS {t('common.perNight')}</span>
               </div>
               <button
                 type="button"

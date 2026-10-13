@@ -1,17 +1,15 @@
 import { motion } from 'framer-motion'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Eye, EyeOff, Phone, Lock, User, BriefcaseBusiness, Shield } from 'lucide-react'
+import { Eye, EyeOff, Phone, Lock, User, Building2 } from 'lucide-react'
 import { useMutation } from '@apollo/client/react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
-import { LOGIN, SIGN_UP } from '@/graphql/user/mutation'
+import { Footer } from '@/components/Footer'
+import { SIGN_UP } from '@/graphql/user/mutation'
 import { useI18n } from '@/i18n'
-import { setAccessToken, setMemberProfile } from '@/lib/auth'
-import { MemberType } from '@/lib/client/enums/member.enum'
-import type { Member } from '@/types/member'
 
 type SignUpResponse = {
   signup: {
@@ -20,24 +18,17 @@ type SignUpResponse = {
   }
 }
 
-type LoginResponse = {
-  login: Member
-}
-
-type LoginVariables = {
-  memberNick: string
-  memberPassword: string
-}
-
 type SignUpVariables = {
   input: {
-    memberType?: MemberType
     memberPhone: string
     memberNick: string
     memberPassword: string
     memberFullName: string
+    memberType: 'USER' | 'AGENT'
   }
 }
+
+type SignUpMemberType = SignUpVariables['input']['memberType']
 
 export default function SignUp() {
   const { t } = useI18n()
@@ -45,19 +36,17 @@ export default function SignUp() {
   const [showPassword, setShowPassword] = useState(false)
   const [fullName, setFullName] = useState('')
   const [memberNick, setMemberNick] = useState('')
-  const [memberType, setMemberType] = useState<MemberType>(MemberType.USER)
   const [phoneNumber, setPhoneNumber] = useState('')
   const [password, setPassword] = useState('')
+  const [memberType, setMemberType] = useState<SignUpMemberType>('USER')
   const [agreedToTerms, setAgreedToTerms] = useState(false)
   const [formError, setFormError] = useState('')
 
   const [signUpMember, { loading: signUpLoading }] = useMutation<SignUpResponse, SignUpVariables>(SIGN_UP)
-  const [loginMember, { loading: adminAutoLoginLoading }] = useMutation<LoginResponse, LoginVariables>(LOGIN)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setFormError('')
-    const selectedMemberType = memberType
     const trimmedNick = memberNick.trim()
     const trimmedPhone = phoneNumber.trim()
     const trimmedFullName = fullName.trim()
@@ -66,11 +55,11 @@ export default function SignUp() {
       const { data } = await signUpMember({
         variables: {
           input: {
-            memberType: selectedMemberType,
             memberPhone: trimmedPhone,
             memberNick: trimmedNick,
             memberPassword: password,
             memberFullName: trimmedFullName,
+            memberType,
           },
         },
       })
@@ -80,63 +69,15 @@ export default function SignUp() {
         return
       }
 
-      if (selectedMemberType === MemberType.ADMIN) {
-        const { data: loginData } = await loginMember({
-          variables: {
-            memberNick: trimmedNick,
-            memberPassword: password,
-          },
-        })
-
-        if (!loginData?.login) {
-          setFormError(t('auth.adminAutoLoginFailed'))
-          return
-        }
-
-        setMemberProfile({
-          _id: loginData.login._id,
-          memberType: loginData.login.memberType,
-          memberStatus: loginData.login.memberStatus,
-          memberAuthType: loginData.login.memberAuthType,
-          memberPhone: loginData.login.memberPhone,
-          memberNick: loginData.login.memberNick,
-          memberFullName: loginData.login.memberFullName,
-          memberImage: loginData.login.memberImage,
-          memberProperties: loginData.login.memberProperties,
-          memberArticles: loginData.login.memberArticles,
-          memberPoints: loginData.login.memberPoints,
-          memberRank: loginData.login.memberRank,
-          memberLikes: loginData.login.memberLikes,
-          memberViews: loginData.login.memberViews,
-          memberComments: loginData.login.memberComments,
-          memberWarnings: loginData.login.memberWarnings,
-          memberBlocks: loginData.login.memberBlocks,
-          deletedAt: loginData.login.deletedAt,
-          createdAt: loginData.login.createdAt,
-          updatedAt: loginData.login.updatedAt,
-        })
-
-        setAccessToken(loginData.login.accessToken || '')
-        navigate('/admin')
-        return
-      }
-
       navigate('/sign-in')
     } catch (error) {
       const message = error instanceof Error ? error.message : t('auth.signUpError')
-      if (
-        selectedMemberType === MemberType.ADMIN &&
-        /already|exists|duplicate|admin/i.test(message)
-      ) {
-        setFormError(t('auth.adminExists'))
-        return
-      }
-
       setFormError(message)
     }
   }
 
   return (
+    <>
     <div className="min-h-screen bg-background flex">
       {/* Left — Imagery */}
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
@@ -187,6 +128,56 @@ export default function SignUp() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium leading-none">
+                {t('common.accountType')}
+              </legend>
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  {
+                    value: 'USER' as const,
+                    icon: User,
+                    title: t('auth.user'),
+                    description: t('auth.userDesc'),
+                  },
+                  {
+                    value: 'AGENT' as const,
+                    icon: Building2,
+                    title: t('auth.agent'),
+                    description: t('auth.agentDesc'),
+                  },
+                ]).map((option) => {
+                  const Icon = option.icon
+                  const selected = memberType === option.value
+
+                  return (
+                    <label
+                      key={option.value}
+                      className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 gentle-animation ${
+                        selected
+                          ? 'border-gold bg-gold/10 ring-1 ring-gold'
+                          : 'border-border bg-card hover:border-gold/50'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="memberType"
+                        value={option.value}
+                        checked={selected}
+                        onChange={() => setMemberType(option.value)}
+                        className="sr-only"
+                      />
+                      <Icon className={`h-5 w-5 shrink-0 ${selected ? 'text-gold-dark' : 'text-muted-foreground'}`} />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium text-foreground">{option.title}</span>
+                        <span className="block text-xs text-muted-foreground">{option.description}</span>
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
+            </fieldset>
+
             <div className="space-y-2">
               <Label htmlFor="fullName">{t('common.fullName')}</Label>
               <div className="relative">
@@ -216,65 +207,6 @@ export default function SignUp() {
                   className="pl-10 h-12 bg-card border-border"
                   required
                 />
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <Label>{t('common.accountType')}</Label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setMemberType(MemberType.USER)}
-                  className={`rounded-xl border px-4 py-3 text-left gentle-animation ${
-                    memberType === 'USER'
-                      ? 'border-gold bg-gold/10 shadow-sm'
-                      : 'border-border bg-card hover:bg-muted/50'
-                  }`}
-                >
-                  <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                    <User className="w-4 h-4" />
-                    {t('auth.user')}
-                  </span>
-                  <span className="mt-1 block text-xs text-muted-foreground">
-                    {t('auth.userDesc')}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setMemberType(MemberType.AGENT)}
-                  className={`rounded-xl border px-4 py-3 text-left gentle-animation ${
-                    memberType === 'AGENT'
-                      ? 'border-gold bg-gold/10 shadow-sm'
-                      : 'border-border bg-card hover:bg-muted/50'
-                  }`}
-                >
-                  <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                    <BriefcaseBusiness className="w-4 h-4" />
-                    {t('auth.agent')}
-                  </span>
-                  <span className="mt-1 block text-xs text-muted-foreground">
-                    {t('auth.agentDesc')}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setMemberType(MemberType.ADMIN)}
-                  className={`rounded-xl border px-4 py-3 text-left gentle-animation ${
-                    memberType === 'ADMIN'
-                      ? 'border-gold bg-gold/10 shadow-sm'
-                      : 'border-border bg-card hover:bg-muted/50'
-                  }`}
-                >
-                  <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                    <Shield className="w-4 h-4" />
-                    {t('auth.admin')}
-                  </span>
-                  <span className="mt-1 block text-xs text-muted-foreground">
-                    {t('auth.adminDesc')}
-                  </span>
-                </button>
               </div>
             </div>
 
@@ -337,9 +269,9 @@ export default function SignUp() {
             <Button
               type="submit"
               className="w-full h-12 text-base font-medium"
-              disabled={!agreedToTerms || signUpLoading || adminAutoLoginLoading}
+              disabled={!agreedToTerms || signUpLoading}
             >
-              {signUpLoading || adminAutoLoginLoading ? t('auth.signingUp') : t('common.createAccount')}
+              {signUpLoading ? t('auth.signingUp') : t('common.createAccount')}
             </Button>
 
             {formError && (
@@ -383,5 +315,7 @@ export default function SignUp() {
         </motion.div>
       </div>
     </div>
+    <Footer />
+    </>
   )
 }

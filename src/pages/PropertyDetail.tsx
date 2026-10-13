@@ -29,15 +29,25 @@ import {
   MessageSquare,
   Send,
   CreditCard,
+  Heart,
+  Share2,
 } from 'lucide-react'
 
 import { Navbar } from '@/components/Navbar'
+import { Footer } from '@/components/Footer'
+import { DEFAULT_GUEST_COUNTS, GuestPicker, totalGuests, type GuestCounts } from '@/components/GuestPicker'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { RatingInput } from '@/components/RatingInput'
 import { RatingPreview } from '@/components/RatingPreview'
-import { CREATE_BOOKINGS, CREATE_COMMENT } from '@/graphql/user/mutation'
-import { GET_COMMENTS, GET_PROPERTIES, GET_PROPERTY_PRICE_PREVIEW } from '@/graphql/user/query'
+import { CREATE_BOOKINGS, CREATE_COMMENT, LIKE_TARGET_PROPERTY } from '@/graphql/user/mutation'
+import {
+  GET_BOOKABLE_UNITS,
+  GET_COMMENTS,
+  GET_PROPERTY,
+  GET_PROPERTY_PRICE_PREVIEW,
+  GET_RECOMMENDED_PROPERTIES,
+} from '@/graphql/user/query'
 import { usePropertyRatings } from '@/hooks/usePropertyRatings'
 import { useI18n } from '@/i18n'
 import { isAuthenticated } from '@/lib/auth'
@@ -50,6 +60,8 @@ enum PropertyCategory {
   VILLA = 'villa',
   HOTEL = 'hotel',
   SANATORIUM = 'sanatorium',
+  APARTMENT = 'apartment',
+  RESORT = 'resort',
 }
 
 enum SortDirection {
@@ -78,6 +90,9 @@ interface ApiProperty {
   propertyComments: number
   propertyImages: string[]
   propertyDesc?: string | null
+  propertyBeds?: number | null
+  propertyRooms?: number | null
+  meLiked?: Array<{ myFavorite: boolean }> | null
 }
 
 interface PricePreviewItem {
@@ -96,6 +111,20 @@ interface PricePreviewResponse {
     baseTotal: number
     totalPrice: number
     averagePrice: number
+    quantity?: number | null
+    billableGuests?: number | null
+    unitId?: string | null
+    unitName?: string | null
+    unitType?: string | null
+    rateModel?: string | null
+    currency?: string | null
+    nightlyTotal?: number | null
+    cleaningFee?: number | null
+    petFee?: number | null
+    extraGuestFee?: number | null
+    guestTotal?: number | null
+    hostCommissionAmount?: number | null
+    hostPayoutAmount?: number | null
     dates: PricePreviewItem[]
   }
 }
@@ -105,7 +134,36 @@ interface PricePreviewVariables {
     propertyId: string
     startDate: string
     endDate: string
+    unitId?: string
+    quantity?: number
+    guests?: number
+    adults?: number
+    children?: number
+    infants?: number
+    pets?: number
   }
+}
+
+interface BookableUnitView {
+  _id: string
+  name: string
+  unitType: string
+  inventoryCount: number
+  basePrice: number
+  rateModel: string
+  maxGuests: number
+  petsAllowed?: boolean | null
+  infantsAllowed?: boolean | null
+  packageNights?: number | null
+  packagePerPerson?: boolean | null
+}
+
+interface GetBookableUnitsResponse {
+  getBookableUnits: { list: BookableUnitView[] }
+}
+
+interface GetBookableUnitsVariables {
+  propertyId: string
 }
 
 interface MemberData {
@@ -127,19 +185,29 @@ interface BackendComment {
   memberData?: MemberData | null
 }
 
-interface GetPropertiesResponse {
+interface GetPropertyResponse {
+  getProperty: ApiProperty
+}
+
+interface GetPropertyVariables {
+  propertyId: string
+}
+
+interface GetRecommendedPropertiesResponse {
   getProperties: {
     list: ApiProperty[]
   }
 }
 
-interface GetPropertiesVariables {
+interface GetRecommendedPropertiesVariables {
   input: {
     page: number
     limit: number
-    sort?: string
-    direction?: SortDirection
-    search: Record<string, never>
+    sort: string
+    direction: SortDirection
+    search: {
+      typeList?: string[]
+    }
   }
 }
 
@@ -170,9 +238,15 @@ interface CreateBookingResponse {
 interface CreateBookingVariables {
   input: {
     propertyId: string
+    unitId?: string
+    quantity?: number
     bookingStart: string
     bookingEnd: string
     bookingGuests: number
+    adults?: number
+    children?: number
+    infants?: number
+    pets?: number
     totalPrice: number
   }
 }
@@ -205,6 +279,8 @@ interface DisplayProperty {
   id: string
   title: string
   location: string
+  propertyType: string
+  propertyLocation: string
   price: number
   rating: number
   ratingCount: number
@@ -270,15 +346,20 @@ interface PropertyImagesProps {
 
 interface BookingSidebarProps {
   property: DisplayProperty
+  units: BookableUnitView[]
+  selectedUnitId: string
+  unitQuantity: number
   checkInDate: string
   checkOutDate: string
-  guestCount: number
+  guestCounts: GuestCounts
   bookingError: string
   bookingSummary: BookingSummary | null
   pricingLoading: boolean
   onCheckInChange: (date: string) => void
   onCheckOutChange: (date: string) => void
-  onGuestCountChange: (count: number) => void
+  onGuestCountsChange: (counts: GuestCounts) => void
+  onUnitChange: (unitId: string) => void
+  onUnitQuantityChange: (quantity: number) => void
   onReviewBooking: () => void
 }
 
@@ -296,6 +377,12 @@ interface CommentSectionProps {
   onSubmit: (e: FormEvent) => void
 }
 
+interface RecommendedPropertiesProps {
+  property: DisplayProperty
+  properties: ApiProperty[]
+  loading: boolean
+}
+
 interface AmenityItemProps {
   amenity: string
 }
@@ -306,9 +393,11 @@ interface AmenityItemProps {
 const ENV = {
   GRAPHQL_URL:
     import.meta.env.VITE_GRAPHQL_URL ||
-    (typeof window !== 'undefined'
-      ? `${window.location.protocol}//${window.location.hostname}:3008/graphql`
-      : 'http://localhost:3008/graphql'),
+    (import.meta.env.PROD
+      ? '/graphql'
+      : typeof window !== 'undefined'
+        ? `${window.location.protocol}//${window.location.hostname}:3008/graphql`
+        : 'http://localhost:3008/graphql'),
 } as const
 
 // -----------------------------------------------------------------------------
@@ -319,12 +408,6 @@ const STORAGE_KEYS = {
 } as const
 
 const QUERY_CONFIG = {
-  PROPERTIES: {
-    PAGE: 1,
-    LIMIT: 200,
-    SORT_FIELD: 'createdAt',
-    SORT_DIRECTION: SortDirection.DESC,
-  },
   COMMENTS: {
     PAGE: 1,
     LIMIT: 50,
@@ -332,8 +415,6 @@ const QUERY_CONFIG = {
     SORT_DIRECTION: SortDirection.DESC,
   },
 } as const
-
-const GUEST_OPTIONS = [1, 2, 3, 4, 5, 6] as const
 
 const DEFAULT_IMAGE = '/assets/hero-villa.jpg'
 
@@ -397,6 +478,12 @@ function getBackendOrigin(): string {
   }
 }
 
+function formatMoney(value: number, formatNumber: (value: number) => string = (number) => new Intl.NumberFormat('uz-UZ').format(number)): string {
+  const numeric = Number(value) || 0
+  const uzs = numeric > 100_000 ? numeric : numeric * 12_500
+  return `${formatNumber(Math.round(uzs))} UZS`
+}
+
 function resolveImageUrl(imagePath?: string): string {
   if (!imagePath) {
     return DEFAULT_IMAGE
@@ -422,6 +509,10 @@ function normalizePropertyType(type: string): PropertyCategory {
       return PropertyCategory.HOTEL
     case 'SANATORIUM':
       return PropertyCategory.SANATORIUM
+    case 'APARTMENT':
+      return PropertyCategory.APARTMENT
+    case 'RESORT':
+      return PropertyCategory.RESORT
     default:
       return PropertyCategory.VILLA
   }
@@ -492,6 +583,8 @@ function mapApiPropertyToDisplay(item: ApiProperty): DisplayProperty {
     id: item._id,
     title: item.propertyTitle,
     location: formatLocation(item.propertyLocation),
+    propertyType: item.propertyType.toUpperCase(),
+    propertyLocation: item.propertyLocation,
     price: item.propertyPrice,
     rating: item.propertyRank || 0,
     ratingCount: item.propertyRatingCount ?? item.propertyComments ?? 0,
@@ -537,7 +630,7 @@ function buildBookingSummaryFromPreview(preview?: PricePreviewResponse['getPrope
 
   return {
     nights: preview.nights,
-    totalPrice: preview.totalPrice,
+    totalPrice: preview.guestTotal ?? preview.totalPrice,
     baseTotal: preview.baseTotal,
     items: preview.dates,
   }
@@ -657,11 +750,11 @@ const PropertyImages: FC<PropertyImagesProps> = ({ images, title, onImageClick }
   const extraImages = images.slice(5)
 
   return (
-    <div className="mb-10 space-y-3">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+    <div className="roomi-gallery mb-10 space-y-3">
+      <div className="roomi-gallery__grid grid grid-cols-1 md:grid-cols-2 gap-3">
         {/* Main image */}
         <div
-          className="relative aspect-[4/3] rounded-2xl overflow-hidden cursor-pointer group"
+          className="roomi-gallery__main relative aspect-[4/3] rounded-2xl overflow-hidden cursor-pointer group"
           onClick={() => onImageClick(0)}
         >
           <img
@@ -672,11 +765,11 @@ const PropertyImages: FC<PropertyImagesProps> = ({ images, title, onImageClick }
         </div>
 
         {/* First 4 thumbnails */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="roomi-gallery__side grid grid-cols-2 gap-3">
           {previewImages.map((img, i) => (
             <div
               key={`${img}-${i}`}
-              className="relative aspect-[4/3] rounded-xl overflow-hidden cursor-pointer group"
+              className="roomi-gallery__tile relative aspect-[4/3] rounded-xl overflow-hidden cursor-pointer group"
               onClick={() => onImageClick(i + 1)}
             >
               <img
@@ -688,6 +781,10 @@ const PropertyImages: FC<PropertyImagesProps> = ({ images, title, onImageClick }
             </div>
           ))}
         </div>
+
+        <button type="button" className="roomi-gallery__show-all" onClick={() => onImageClick(0)}>
+          {t('common.morePhotos', { count: images.length })}
+        </button>
       </div>
 
       {extraImages.length > 0 && (
@@ -803,7 +900,7 @@ const PropertyHeader: FC<{
   const { propertyTypeLabel } = useI18n()
 
   return (
-    <>
+    <div className="roomi-detail-heading__copy">
       <div className="flex items-center gap-2 mb-3">
         <span className="text-xs font-medium px-3 py-1 rounded-full bg-secondary text-secondary-foreground capitalize">
           {propertyTypeLabel(property.category)}
@@ -811,7 +908,7 @@ const PropertyHeader: FC<{
         <RatingPreview value={rating} count={reviewCount} />
       </div>
 
-      <h1 className="font-display text-3xl md:text-4xl font-bold text-foreground mb-2">
+      <h1 className="font-sans text-3xl md:text-4xl font-bold text-foreground mb-2">
         {property.title}
       </h1>
 
@@ -819,7 +916,7 @@ const PropertyHeader: FC<{
         <MapPin className="w-4 h-4" />
         <span className="text-sm">{property.location}</span>
       </div>
-    </>
+    </div>
   )
 }
 
@@ -829,7 +926,7 @@ const DescriptionSection: FC<{ description: string }> = ({ description }) => {
 
   return (
     <div className="mb-10">
-      <h2 className="font-display text-xl font-semibold text-foreground mb-3">{t('common.description')}</h2>
+      <h2 className="font-sans text-xl font-semibold text-foreground mb-3">{t('common.description')}</h2>
       <p className="text-sm leading-relaxed text-muted-foreground">
         {description || t('common.noDescription')}
       </p>
@@ -844,7 +941,7 @@ const AmenitiesSection: FC<{ amenities: string[] }> = ({ amenities }) => {
 
   return (
     <div className="mb-10">
-      <h2 className="font-display text-xl font-semibold text-foreground mb-4">{t('common.amenities')}</h2>
+      <h2 className="font-sans text-xl font-semibold text-foreground mb-4">{t('common.amenities')}</h2>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
         {displayAmenities.map((amenity) => (
           <AmenityItem key={amenity} amenity={amenity} />
@@ -860,7 +957,7 @@ const LocationSection: FC<{ title: string; location: string }> = ({ title, locat
 
   return (
     <div className="mb-10">
-      <h2 className="font-display text-xl font-semibold text-foreground mb-4">{t('common.location')}</h2>
+      <h2 className="font-sans text-xl font-semibold text-foreground mb-4">{t('common.location')}</h2>
       <div className="rounded-2xl overflow-hidden border border-border bg-card">
         <iframe
           title={`${title} ${t('common.location')}`}
@@ -950,7 +1047,7 @@ const CommentSection: FC<CommentSectionProps> = ({
     <div>
       <div className="flex items-center gap-2 mb-4">
         <MessageSquare className="w-5 h-5 text-gold" />
-        <h2 className="font-display text-xl font-semibold text-foreground">{t('propertyDetail.commentsTitle')}</h2>
+        <h2 className="font-sans text-xl font-semibold text-foreground">{t('propertyDetail.commentsTitle')}</h2>
       </div>
 
       <CommentForm
@@ -999,6 +1096,75 @@ const CommentSection: FC<CommentSectionProps> = ({
   )
 }
 
+/** Related stays shown after the detail content, ranked by type, location and price. */
+const RecommendedProperties: FC<RecommendedPropertiesProps> = ({ property, properties, loading }) => {
+  const { propertyTypeLabel, t, formatNumber } = useI18n()
+
+  if (!loading && properties.length === 0) return null
+
+  return (
+    <section className="roomi-recommendations" aria-labelledby="roomi-recommendations-title">
+      <div className="roomi-recommendations__header">
+        <div>
+          <p className="roomi-recommendations__eyebrow">{t('propertyDetail.recommendationsEyebrow')}</p>
+          <h2 id="roomi-recommendations-title">{t('propertyDetail.similarTitle', { type: propertyTypeLabel(property.propertyType) })}</h2>
+          <p className="roomi-recommendations__subtitle">
+            {t('propertyDetail.similarSubtitle', { location: property.location })}
+          </p>
+        </div>
+        <Link to={`/properties?category=${property.category}`} className="roomi-recommendations__link">
+          {t('propertyDetail.seeAll')}
+        </Link>
+      </div>
+
+      {loading ? (
+        <div className="roomi-recommendations__loading" aria-live="polite">
+          <span />
+          <span />
+          <span />
+          <span />
+        </div>
+      ) : (
+        <div className="roomi-listing-grid roomi-recommendations__grid">
+          {properties.map((item) => (
+            <article key={item._id} className="roomi-listing-card">
+              <Link to={`/properties/${item._id}`} className="roomi-listing-card__image-wrap">
+                <img
+                  src={resolveImageUrl(item.propertyImages?.[0])}
+                  alt={item.propertyTitle}
+                  loading="lazy"
+                  onError={(event) => {
+                    event.currentTarget.src = DEFAULT_IMAGE
+                  }}
+                />
+                <span className="roomi-listing-card__badge">{propertyTypeLabel(item.propertyType)}</span>
+              </Link>
+              <Link to={`/properties/${item._id}`} className="roomi-listing-card__body">
+                <div className="roomi-listing-card__title-row">
+                  <h3>{item.propertyTitle}</h3>
+                  <span>
+                    <Star size={14} fill="currentColor" />
+                    {Number(item.propertyRank) > 0 ? Number(item.propertyRank).toFixed(1) : t('propertyDetail.newRating')}
+                  </span>
+                </div>
+                <p className="roomi-listing-card__location">
+                  <MapPin size={14} /> {formatLocation(item.propertyLocation)}
+                </p>
+                <p className="roomi-listing-card__meta">
+                  {item.propertyBeds || 1} {t('common.beds').toLowerCase()} · {item.propertyRooms || 1} {t('common.rooms').toLowerCase()} · {item.propertyComments || 0} {t('common.comments').toLowerCase()}
+                </p>
+                <p className="roomi-listing-card__price">
+                  <strong>{formatMoney(item.propertyPrice, formatNumber)}</strong> <span>{t('common.perNight')}</span>
+                </p>
+              </Link>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
 /** Date input field */
 const DateInput: FC<{
   label: string
@@ -1018,89 +1184,108 @@ const DateInput: FC<{
   </div>
 )
 
-/** Guest select field */
-const GuestSelect: FC<{
-  value: number
-  onChange: (value: number) => void
-}> = ({ value, onChange }) => {
-  const { t } = useI18n()
-
-  return (
-    <div>
-      <label className="text-xs font-medium text-muted-foreground mb-1 block uppercase tracking-wider">
-        {t('common.guests')}
-      </label>
-      <select
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="text-sm w-full px-3 py-2.5 rounded-xl bg-muted border border-border text-foreground outline-none focus:ring-2 focus:ring-primary/30"
-      >
-        {GUEST_OPTIONS.map((n) => (
-          <option key={n} value={n}>
-            {`${n} ${n > 1 ? t('common.guests') : t('common.guest')}`}
-          </option>
-        ))}
-      </select>
-    </div>
-  )
-}
-
 /** Booking sidebar */
 const BookingSidebar: FC<BookingSidebarProps> = ({
   property,
+  units,
+  selectedUnitId,
+  unitQuantity,
   checkInDate,
   checkOutDate,
-  guestCount,
+  guestCounts,
   bookingError,
   bookingSummary,
   pricingLoading,
   onCheckInChange,
   onCheckOutChange,
-  onGuestCountChange,
+  onGuestCountsChange,
+  onUnitChange,
+  onUnitQuantityChange,
   onReviewBooking,
 }) => {
   const { t, formatNumber } = useI18n()
+  const selectedUnit = units.find((unit) => unit._id === selectedUnitId)
   const nightlyPrice = bookingSummary?.items?.[0]?.pricePerDay ?? property.price
   const totalPrice = bookingSummary?.totalPrice ?? Math.round(property.price)
 
   return (
-    <div className="lg:col-span-1">
-      <div className="sticky top-28 bg-card rounded-2xl p-6 elevated-shadow border border-border">
+    <div className="roomi-booking-sidebar lg:col-span-1">
+      <div className="roomi-booking-card sticky top-28 bg-card rounded-2xl p-6 elevated-shadow border border-border">
         {/* Price display */}
         <div className="flex items-baseline gap-1 mb-6">
-          <span className="text-3xl font-bold text-foreground">${formatNumber(nightlyPrice)}</span>
+          <span className="text-3xl font-bold text-foreground">{formatMoney(nightlyPrice, formatNumber)}</span>
           <span className="text-sm text-muted-foreground">{t('common.perNight')}</span>
         </div>
 
         {bookingSummary ? (
           <div className="mb-4 rounded-xl border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
             <div className="flex items-center justify-between gap-2">
-              <span>{bookingSummary.nights} nights</span>
-              <span className="text-foreground font-medium">${formatNumber(totalPrice)}</span>
+              <span>{t('propertyDetail.nights', { count: bookingSummary.nights })}</span>
+              <span className="text-foreground font-medium">{formatMoney(totalPrice, formatNumber)}</span>
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
               {bookingSummary.items?.slice(0, 4).map((item) => (
                 <span key={item.date} className="rounded-full bg-background px-2.5 py-1">
-                  {item.date} · ${formatNumber(item.pricePerDay)}
+                  {item.date} · {formatMoney(item.pricePerDay, formatNumber)}
                 </span>
               ))}
             </div>
-            {pricingLoading ? <p className="mt-2">Recalculating weekend pricing...</p> : null}
+            {pricingLoading ? <p className="mt-2">{t('propertyDetail.recalculatingPricing')}</p> : null}
           </div>
         ) : null}
 
         {/* Booking form */}
         <div className="space-y-3 mb-6">
+          {units.length > 1 && (
+            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              {t('propertyDetail.roomOrUnitType')}
+              <select
+                value={selectedUnitId}
+                onChange={(event) => onUnitChange(event.target.value)}
+                className="mt-1.5 text-sm w-full px-3 py-2.5 rounded-xl bg-muted border border-border text-foreground outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                {units.map((unit) => (
+                  <option key={unit._id} value={unit._id}>
+                    {unit.name} · {unit.inventoryCount} {t('common.available')} · {formatMoney(unit.basePrice, formatNumber)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {(() => {
+            const selectedUnit = units.find((unit) => unit._id === selectedUnitId)
+            if (!selectedUnit || selectedUnit.unitType === 'ENTIRE_UNIT' || selectedUnit.inventoryCount <= 1) return null
+            return (
+              <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                {t('propertyDetail.numberOfRooms')}
+                <select
+                  value={unitQuantity}
+                  onChange={(event) => onUnitQuantityChange(Number(event.target.value))}
+                  className="mt-1.5 text-sm w-full px-3 py-2.5 rounded-xl bg-muted border border-border text-foreground outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  {Array.from({ length: selectedUnit.inventoryCount }, (_, index) => index + 1).map((quantity) => (
+                    <option key={quantity} value={quantity}>{quantity}</option>
+                  ))}
+                </select>
+              </label>
+            )
+          })()}
           <div className="grid grid-cols-2 gap-3">
             <DateInput label={t('common.checkIn')} value={checkInDate} onChange={onCheckInChange} />
             <DateInput label={t('common.checkOut')} value={checkOutDate} onChange={onCheckOutChange} />
           </div>
-          <GuestSelect value={guestCount} onChange={onGuestCountChange} />
+          <GuestPicker
+            value={guestCounts}
+            onChange={onGuestCountsChange}
+            maxGuests={(selectedUnit?.maxGuests ?? 16) * Math.max(1, unitQuantity)}
+            petsAllowed={selectedUnit?.petsAllowed !== false}
+            infantsAllowed={selectedUnit?.infantsAllowed !== false}
+          />
         </div>
 
         {/* Review button */}
         <Button type="button" onClick={onReviewBooking} className="w-full h-12 text-base">
-          {t('Booking')}
+          {t('common.booking')}
         </Button>
 
         {/* Error message */}
@@ -1166,7 +1351,7 @@ const BookingReviewModal: FC<BookingReviewModalProps> = ({
       >
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-display text-xl font-semibold text-foreground">{t('common.reviewBooking')}</h3>
+          <h3 className="font-sans text-xl font-semibold text-foreground">{t('common.reviewBooking')}</h3>
           <button
             type="button"
             onClick={onClose}
@@ -1186,11 +1371,11 @@ const BookingReviewModal: FC<BookingReviewModalProps> = ({
           </p>
           {bookingSummary ? (
             <div className="mt-1 space-y-1">
-              <p className="text-foreground font-medium">{t('common.total')}: ${formatNumber(bookingSummary.totalPrice)}</p>
+              <p className="text-foreground font-medium">{t('common.total')}: {formatMoney(bookingSummary.totalPrice, formatNumber)}</p>
               <div className="flex flex-wrap gap-2 text-xs">
                 {bookingSummary.items?.slice(0, 4).map((item) => (
                   <span key={item.date} className="rounded-full bg-background px-2.5 py-1 text-muted-foreground">
-                    {item.date} · ${formatNumber(item.pricePerDay)}
+                    {item.date} · {formatMoney(item.pricePerDay, formatNumber)}
                   </span>
                 ))}
               </div>
@@ -1270,26 +1455,49 @@ export default function PropertyDetail(): JSX.Element {
   const navigate = useNavigate()
   const [checkInDate, setCheckInDate] = useState('')
   const [checkOutDate, setCheckOutDate] = useState('')
+  const [guestCounts, setGuestCounts] = useState<GuestCounts>(DEFAULT_GUEST_COUNTS)
+  const guestCount = totalGuests(guestCounts)
+  const [selectedUnitId, setSelectedUnitId] = useState('')
+  const [unitQuantity, setUnitQuantity] = useState(1)
 
   // ---------------------------------------------------------------------------
   // QUERIES
   // ---------------------------------------------------------------------------
   const {
-    data: propertiesData,
-    loading: propertiesLoading,
-    error: propertiesError,
-    refetch: refetchProperties,
-  } = useQuery<GetPropertiesResponse, GetPropertiesVariables>(GET_PROPERTIES, {
+    data: propertyData,
+    loading: propertyLoading,
+    error: propertyError,
+    refetch: refetchProperty,
+  } = useQuery<GetPropertyResponse, GetPropertyVariables>(GET_PROPERTY, {
+    variables: { propertyId: id || '' },
+    skip: !id,
+    fetchPolicy: 'network-only',
+  })
+
+  const { data: unitsData } = useQuery<GetBookableUnitsResponse, GetBookableUnitsVariables>(GET_BOOKABLE_UNITS, {
+    variables: { propertyId: id || '' },
+    skip: !id,
+    fetchPolicy: 'cache-and-network',
+  })
+
+  const recommendedPropertyType = propertyData?.getProperty?.propertyType?.toUpperCase()
+  const {
+    data: recommendedData,
+    loading: recommendedLoading,
+  } = useQuery<GetRecommendedPropertiesResponse, GetRecommendedPropertiesVariables>(GET_RECOMMENDED_PROPERTIES, {
     variables: {
       input: {
-        page: QUERY_CONFIG.PROPERTIES.PAGE,
-        limit: QUERY_CONFIG.PROPERTIES.LIMIT,
-        sort: QUERY_CONFIG.PROPERTIES.SORT_FIELD,
-        direction: QUERY_CONFIG.PROPERTIES.SORT_DIRECTION,
-        search: {},
+        page: 1,
+        limit: 24,
+        sort: 'propertyRank',
+        direction: SortDirection.DESC,
+        search: {
+          typeList: recommendedPropertyType ? [recommendedPropertyType] : undefined,
+        },
       },
     },
-    fetchPolicy: 'network-only',
+    skip: !recommendedPropertyType,
+    fetchPolicy: 'cache-and-network',
   })
 
   const {
@@ -1321,6 +1529,13 @@ export default function PropertyDetail(): JSX.Element {
     variables: {
       input: {
         propertyId: id || '',
+        unitId: selectedUnitId || undefined,
+        quantity: unitQuantity,
+        guests: guestCount,
+        adults: guestCounts.adults,
+        children: guestCounts.children,
+        infants: guestCounts.infants,
+        pets: guestCounts.pets,
         startDate: checkInDate,
         endDate: checkOutDate,
       },
@@ -1341,6 +1556,7 @@ export default function PropertyDetail(): JSX.Element {
     CreateCommentResponse,
     CreateCommentVariables
   >(CREATE_COMMENT)
+  const [likeProperty] = useMutation(LIKE_TARGET_PROPERTY)
 
   // ---------------------------------------------------------------------------
   // STATE
@@ -1348,6 +1564,7 @@ export default function PropertyDetail(): JSX.Element {
   const [currentImage, setCurrentImage] = useState(0)
   const [showGallery, setShowGallery] = useState(false)
   const [showBookingReview, setShowBookingReview] = useState(false)
+  const [saved, setSaved] = useState(false)
 
    // Comment form state
   const [message, setMessage] = useState('')
@@ -1355,7 +1572,6 @@ export default function PropertyDetail(): JSX.Element {
   const [commentError, setCommentError] = useState('')
 
   // Booking form state
-  const [guestCount, setGuestCount] = useState(1)
   const [bookingError, setBookingError] = useState('')
   const [savedCards, setSavedCards] = useState<SavedCard[]>([])
   const [selectedCardId, setSelectedCardId] = useState('')
@@ -1364,9 +1580,38 @@ export default function PropertyDetail(): JSX.Element {
   // MEMOIZED VALUES
   // ---------------------------------------------------------------------------
   const property = useMemo<DisplayProperty | undefined>(() => {
-    const list = propertiesData?.getProperties?.list ?? []
-    return list.map(mapApiPropertyToDisplay).find((p) => p.id === id)
-  }, [propertiesData, id])
+    if (!propertyData?.getProperty) return undefined
+    return mapApiPropertyToDisplay(propertyData.getProperty)
+  }, [propertyData])
+
+  const recommendedProperties = useMemo(() => {
+    if (!property) return []
+
+    const targetPrice = Number(property.price) || 0
+    return (recommendedData?.getProperties?.list ?? [])
+      .filter((item) => item._id !== property.id)
+      .map((item) => {
+        const itemPrice = Number(item.propertyPrice) || 0
+        const sameLocation = item.propertyLocation === property.propertyLocation
+        const priceDistance = targetPrice > 0
+          ? Math.abs(itemPrice - targetPrice) / targetPrice
+          : 1
+
+        // Keep recommendations relevant even when the API rank is the same:
+        // location gets priority, then a similar nightly price, then rating.
+        const score =
+          (sameLocation ? 1000 : 0) +
+          Math.max(0, 100 - priceDistance * 100) +
+          (Number(item.propertyRank) || 0) * 20
+
+        return { item, score }
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 4)
+      .map(({ item }) => item)
+  }, [property, recommendedData])
+
+  const units = useMemo(() => unitsData?.getBookableUnits?.list ?? [], [unitsData])
 
   const propertyIds = useMemo(() => (property ? [property.id] : []), [property])
   const ratingsById = usePropertyRatings(propertyIds)
@@ -1412,10 +1657,52 @@ export default function PropertyDetail(): JSX.Element {
     () => setShowBookingReview(false),
   ])
 
+  useEffect(() => {
+    if (!units.length) return
+    if (!units.some((unit) => unit._id === selectedUnitId)) {
+      setSelectedUnitId(units[0]._id)
+      setUnitQuantity(1)
+    }
+  }, [units, selectedUnitId])
+
+  useEffect(() => {
+    const selectedUnit = units.find((unit) => unit._id === selectedUnitId)
+    const maxQuantity = selectedUnit?.unitType === 'ENTIRE_UNIT'
+      ? 1
+      : Math.max(1, selectedUnit?.inventoryCount ?? 1)
+    setUnitQuantity((current) => Math.min(Math.max(1, current), maxQuantity))
+  }, [units, selectedUnitId])
+
   // ---------------------------------------------------------------------------
   // HANDLERS
   // ---------------------------------------------------------------------------
   const handleGoBack = () => navigate(-1)
+
+  const handleSave = async () => {
+    if (!property) return
+    if (!isAuthenticated()) {
+      const message = t('common.signedInRequired')
+      window.alert(message)
+      navigate('/sign-in')
+      return
+    }
+    try {
+      await likeProperty({ variables: { propertyId: property.id } })
+      setSaved((value) => !value)
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : t('propertyDetail.saveFailed'))
+    }
+  }
+
+  const handleShare = async () => {
+    const shareData = { title: property?.title || 'ROOMi', url: window.location.href }
+    try {
+      if (navigator.share) await navigator.share(shareData)
+      else await navigator.clipboard.writeText(window.location.href)
+    } catch {
+      // The user cancelled the native share sheet.
+    }
+  }
 
   const handleImageClick = (index: number) => {
     setCurrentImage(index)
@@ -1503,9 +1790,15 @@ export default function PropertyDetail(): JSX.Element {
         variables: {
           input: {
             propertyId: property.id,
+            unitId: selectedUnitId || undefined,
+            quantity: unitQuantity,
             bookingStart: checkInDate,
             bookingEnd: checkOutDate,
             bookingGuests: guestCount,
+            adults: guestCounts.adults,
+            children: guestCounts.children,
+            infants: guestCounts.infants,
+            pets: guestCounts.pets,
             totalPrice: bookingSummary.totalPrice,
           },
         },
@@ -1568,7 +1861,7 @@ export default function PropertyDetail(): JSX.Element {
       setMessage('')
       setRating(RATING_LIMITS.DEFAULT)
 
-      await Promise.all([refetchComments(), refetchProperties()])
+      await Promise.all([refetchComments(), refetchProperty()])
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : t('propertyDetail.failedToPostComment')
       setCommentError(errorMessage)
@@ -1578,12 +1871,12 @@ export default function PropertyDetail(): JSX.Element {
   // ---------------------------------------------------------------------------
   // RENDER CONDITIONS
   // ---------------------------------------------------------------------------
-  if (propertiesLoading) {
+  if (propertyLoading) {
     return <LoadingState message={t('common.loadingProperty')} />
   }
 
-  if (propertiesError) {
-    return <ErrorState message={propertiesError.message} />
+  if (propertyError) {
+    return <ErrorState message={propertyError.message} />
   }
 
   if (!property) {
@@ -1594,23 +1887,33 @@ export default function PropertyDetail(): JSX.Element {
   // MAIN RENDER
   // ---------------------------------------------------------------------------
   return (
-    <div className="min-h-screen bg-background">
+    <div className="roomi-detail-page min-h-screen bg-background">
       <Navbar forceSolid />
 
-      <main className="max-w-7xl mx-auto px-6 pt-28 pb-16">
+      <main className="roomi-detail-main max-w-7xl mx-auto px-6 pt-8 pb-16">
         <BackButton onClick={handleGoBack} />
+
+        <div className="roomi-detail-topline">
+          <PropertyHeader
+            property={property}
+            rating={displayedRating}
+            reviewCount={displayedReviews}
+          />
+          <div className="roomi-detail-actions">
+            <button type="button" onClick={handleShare}>
+              <Share2 size={16} /> {t('common.share')}
+            </button>
+            <button type="button" onClick={handleSave} className={saved ? 'is-saved' : ''}>
+              <Heart size={16} fill={saved ? 'currentColor' : 'none'} /> {saved ? t('common.saved') : t('common.save')}
+            </button>
+          </div>
+        </div>
 
         <PropertyImages images={images} title={property.title} onImageClick={handleImageClick} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
           {/* Left column - Property details */}
           <div className="lg:col-span-2">
-            <PropertyHeader
-              property={property}
-              rating={displayedRating}
-              reviewCount={displayedReviews}
-            />
-
             <DescriptionSection description={property.description} />
 
             <AmenitiesSection amenities={property.amenities} />
@@ -1635,19 +1938,35 @@ export default function PropertyDetail(): JSX.Element {
           {/* Right column - Booking sidebar */}
           <BookingSidebar
             property={property}
+            units={units}
+            selectedUnitId={selectedUnitId}
+            unitQuantity={unitQuantity}
             checkInDate={checkInDate}
             checkOutDate={checkOutDate}
-            guestCount={guestCount}
+            guestCounts={guestCounts}
             bookingError={bookingError}
             bookingSummary={bookingSummary}
             pricingLoading={pricePreviewLoading}
             onCheckInChange={setCheckInDate}
             onCheckOutChange={setCheckOutDate}
-            onGuestCountChange={setGuestCount}
+            onGuestCountsChange={setGuestCounts}
+            onUnitChange={(unitId) => {
+              setSelectedUnitId(unitId)
+              setUnitQuantity(1)
+            }}
+            onUnitQuantityChange={setUnitQuantity}
             onReviewBooking={handleReviewBooking}
           />
         </div>
+
+        <RecommendedProperties
+          property={property}
+          properties={recommendedProperties}
+          loading={recommendedLoading}
+        />
       </main>
+
+      <Footer />
 
       {/* Image gallery modal */}
       <AnimatePresence>

@@ -1,6 +1,7 @@
 import { useLocation } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useI18n } from '@/i18n'
+import { Footer } from '@/components/Footer'
 
 const NotFound = () => {
   const { t } = useI18n()
@@ -11,15 +12,18 @@ const NotFound = () => {
   }, [location.pathname])
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-100">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">404</h1>
-        <p className="mb-4 text-xl text-gray-600">{t('common.pageNotFound')}</p>
-        <a href="/" className="text-blue-500 underline hover:text-blue-700">
-          {t('common.returnHome')}
-        </a>
+    <>
+      <div className="flex min-h-screen items-center justify-center bg-gray-100">
+        <div className="text-center">
+          <h1 className="mb-4 text-4xl font-bold">404</h1>
+          <p className="mb-4 text-xl text-gray-600">{t('common.pageNotFound')}</p>
+          <a href="/" className="text-blue-500 underline hover:text-blue-700">
+            {t('common.returnHome')}
+          </a>
+        </div>
       </div>
-    </div>
+      <Footer />
+    </>
   )
 }
 

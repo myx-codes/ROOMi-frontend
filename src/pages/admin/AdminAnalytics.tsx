@@ -10,7 +10,15 @@ import {
 
 type MemberStatus = 'ACTIVE' | 'BLOCK' | 'DELETE'
 type MemberType = 'USER' | 'AGENT' | 'ADMIN'
-type PropertyStatus = 'ACTIVE' | 'HOLD' | 'DELETE' | 'BOOKED'
+type PropertyStatus =
+  | 'DRAFT'
+  | 'PENDING_REVIEW'
+  | 'ACTIVE'
+  | 'SUSPENDED'
+  | 'ARCHIVED'
+  | 'HOLD'
+  | 'DELETE'
+  | 'BOOKED'
 type ArticleStatus = 'ACTIVE' | 'WAITING' | 'DELETE' | 'HOLD'
 type ArticleCategory = 'FREE' | 'NEWS' | 'EVENT' | 'HELP' | 'RECOMMEND' | 'LIFESTYLE'
 

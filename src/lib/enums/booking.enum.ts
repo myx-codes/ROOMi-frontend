@@ -1,10 +1,14 @@
 import { registerEnumType } from '@nestjs/graphql';
 
 export enum BookingStatus {
-    WAITING = 'WAITING',   // To'lov yoki Owner tasdig'ini kutmoqda
-    CONFIRMED = 'CONFIRMED', // Tasdiqlangan (To'langan yoki band qilingan)
-    CANCELLED = 'CANCELLED', // Bekor qilingan
-    FINISHED = 'FINISHED',   // Mijoz kelib ketgan (Arxiv)
+    REQUESTED = 'REQUESTED',
+    AWAITING_PAYMENT = 'AWAITING_PAYMENT',
+    CONFIRMED = 'CONFIRMED',
+    COMPLETED = 'COMPLETED',
+    CANCELLED = 'CANCELLED',
+    EXPIRED = 'EXPIRED',
+    WAITING = 'WAITING',
+    FINISHED = 'FINISHED',
 }
 
 registerEnumType(BookingStatus, {
@@ -18,4 +22,13 @@ export enum BookingGroup {
 
 registerEnumType(BookingGroup, {
     name: 'BookingGroup',
+});
+
+export enum BookingMode {
+    INSTANT = 'INSTANT',
+    REQUEST = 'REQUEST',
+}
+
+registerEnumType(BookingMode, {
+    name: 'BookingMode',
 });

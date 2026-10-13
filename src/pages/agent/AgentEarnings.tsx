@@ -50,7 +50,7 @@ function resolveTotal(metaCounter?: TotalCounter[] | TotalCounter | null): numbe
 }
 
 export default function AgentEarnings() {
-  const { t, formatNumber } = useI18n()
+  const { t, formatNumber, bookingStatusShortLabel } = useI18n()
   const { data, loading, error } = useQuery<
     GetBookingsForMyPropertiesResponse,
     GetBookingsForMyPropertiesVariables
@@ -99,10 +99,10 @@ export default function AgentEarnings() {
   const averageBooking = bookings.length ? Math.round(totalRevenue / bookings.length) : 0
 
   const stats = [
-    { label: t('agent.totalEarnings'), value: `$${formatNumber(totalRevenue)}`, icon: DollarSign },
-    { label: 'Confirmed revenue', value: `$${formatNumber(revenueByStatus.CONFIRMED)}`, icon: TrendingUp },
-    { label: 'Finished revenue', value: `$${formatNumber(revenueByStatus.FINISHED)}`, icon: CalendarCheck },
-    { label: 'Avg booking', value: `$${formatNumber(averageBooking)}`, icon: Sparkles },
+    { label: t('agent.totalEarnings'), value: `${formatNumber(totalRevenue)} UZS`, icon: DollarSign },
+    { label: `${bookingStatusShortLabel('CONFIRMED')} — ${t('common.earnings').toLowerCase()}`, value: `${formatNumber(revenueByStatus.CONFIRMED)} UZS`, icon: TrendingUp },
+    { label: `${bookingStatusShortLabel('FINISHED')} — ${t('common.earnings').toLowerCase()}`, value: `${formatNumber(revenueByStatus.FINISHED)} UZS`, icon: CalendarCheck },
+    { label: t('agent.averageBooking'), value: `${formatNumber(averageBooking)} UZS`, icon: Sparkles },
   ]
 
   return (
@@ -132,7 +132,7 @@ export default function AgentEarnings() {
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="rounded-2xl border border-border bg-card/70 p-5">
-              <h3 className="font-display text-lg font-semibold text-foreground">Revenue by status</h3>
+              <h3 className="font-display text-lg font-semibold text-foreground">{t('agent.revenueByStatus')}</h3>
               <div className="mt-4 space-y-3">
                 {[
                   ['CONFIRMED', revenueByStatus.CONFIRMED],
@@ -141,19 +141,19 @@ export default function AgentEarnings() {
                   ['CANCELLED', revenueByStatus.CANCELLED],
                 ].map(([status, value]) => (
                   <div key={status} className="flex items-center justify-between rounded-xl border border-border px-3 py-2">
-                    <span className="text-sm text-muted-foreground">{status}</span>
-                    <span className="text-sm font-semibold text-foreground">${formatNumber(value as number)}</span>
+                    <span className="text-sm text-muted-foreground">{bookingStatusShortLabel(status)}</span>
+                    <span className="text-sm font-semibold text-foreground">{formatNumber(value as number)} UZS</span>
                   </div>
                 ))}
               </div>
             </div>
             <div className="rounded-2xl border border-border bg-card/70 p-5">
-              <h3 className="font-display text-lg font-semibold text-foreground">Earnings note</h3>
+              <h3 className="font-display text-lg font-semibold text-foreground">{t('agent.earningsNote')}</h3>
               <p className="mt-3 text-sm text-muted-foreground">
-                This page shows only earnings data. Booking rows are intentionally hidden so the page stays focused on revenue analysis.
+                {t('agent.earningsNoteDescription')}
               </p>
               <p className="mt-4 text-xs text-muted-foreground">
-                Auto-calculated from live booking totals and grouped by booking status.
+                {t('agent.earningsAutoCalculated')}
               </p>
             </div>
           </div>

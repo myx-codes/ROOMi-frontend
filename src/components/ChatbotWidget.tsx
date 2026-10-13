@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { matchPath, useLocation } from 'react-router-dom'
-import { useMutation } from '@apollo/client/react'
+import { useMutation, useQuery } from '@apollo/client/react'
 import { Bot, Loader2, MessageSquare, Send, Sparkles, X } from 'lucide-react'
-import { ENSURE_CHAT_THREAD, SEND_CHAT_MESSAGE } from '@/graphql/chat'
+import { ENSURE_CHAT_THREAD, GET_CHAT_THREAD, SEND_CHAT_MESSAGE } from '@/graphql/chat'
 import { getMemberProfile } from '@/lib/auth'
 import { useI18n } from '@/i18n'
 
@@ -43,11 +43,23 @@ type EnsureChatThreadVariables = {
   }
 }
 
+type GetChatThreadResponse = {
+  getChatThread: ChatThread
+}
+
+type GetChatThreadVariables = {
+  input: {
+    threadId: string
+    sessionId: string
+    propertyId?: string | null
+  }
+}
+
 type SendChatMessageResponse = {
   sendChatMessage: {
     thread: ChatThread
     userMessage: ChatMessage
-    assistantMessage: ChatMessage
+    assistantMessage?: ChatMessage | null
     messageCount: number
   }
 }
@@ -115,7 +127,7 @@ function ChatBubble({ senderType, content }: ChatBubbleProps) {
 }
 
 export function ChatbotWidget() {
-  const { language } = useI18n()
+  const { language, t } = useI18n()
   const location = useLocation()
   const propertyId = usePropertyChatContext()
   const [open, setOpen] = useState(false)
@@ -125,11 +137,24 @@ export function ChatbotWidget() {
   const [initializing, setInitializing] = useState(false)
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
+  const [awaitingAssistantId, setAwaitingAssistantId] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const [ensureChatThread] = useMutation<EnsureChatThreadResponse, EnsureChatThreadVariables>(ENSURE_CHAT_THREAD)
   const [sendChatMessage] = useMutation<SendChatMessageResponse, SendChatMessageVariables>(SEND_CHAT_MESSAGE)
+  const { data: polledThread } = useQuery<GetChatThreadResponse, GetChatThreadVariables>(GET_CHAT_THREAD, {
+    variables: {
+      input: {
+        threadId: thread?._id ?? '',
+        sessionId,
+        propertyId: propertyId ?? null,
+      },
+    },
+    skip: !open || !sessionId || !thread?._id || !awaitingAssistantId,
+    pollInterval: awaitingAssistantId ? 2000 : 0,
+    fetchPolicy: 'network-only',
+  })
 
   useEffect(() => {
     setSessionId(getOrCreateSessionId())
@@ -147,7 +172,7 @@ export function ChatbotWidget() {
         const payload = {
           sessionId,
           propertyId: propertyId ?? null,
-          title: propertyId ? 'Property support chat' : 'ROOMi support',
+          title: propertyId ? t('chat.propertyThreadTitle') : t('chat.supportThreadTitle'),
           language,
         }
 
@@ -160,7 +185,7 @@ export function ChatbotWidget() {
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Chat bot is unavailable right now.')
+          setError(err instanceof Error ? err.message : t('chat.unavailable'))
         }
       } finally {
         if (!cancelled) {
@@ -173,12 +198,29 @@ export function ChatbotWidget() {
     return () => {
       cancelled = true
     }
-  }, [ensureChatThread, open, propertyId, sessionId, refreshKey])
+  }, [ensureChatThread, language, open, propertyId, sessionId, refreshKey, t])
 
   useEffect(() => {
     if (!open) return
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-  }, [open, thread?.messages?.length])
+  }, [awaitingAssistantId, open, thread?.messages?.length])
+
+  useEffect(() => {
+    const incoming = polledThread?.getChatThread
+    if (!incoming || !thread || !awaitingAssistantId) return
+
+    setThread((current) => {
+      if (!current || incoming._id !== current._id) return current
+      return (incoming.messages?.length ?? 0) > (current.messages?.length ?? 0) ? incoming : current
+    })
+
+    const userIndex = (incoming.messages ?? []).findIndex((item) => item._id === awaitingAssistantId)
+    const assistantArrived = userIndex >= 0 && (incoming.messages ?? [])
+      .slice(userIndex + 1)
+      .some((item) => item.senderType === 'ASSISTANT')
+
+    if (assistantArrived) setAwaitingAssistantId(null)
+  }, [awaitingAssistantId, polledThread, thread])
 
   useEffect(() => {
     const authEvent = 'roomi-auth-changed'
@@ -194,14 +236,14 @@ export function ChatbotWidget() {
 
   const messages = thread?.messages ?? []
   const hasMessages = messages.length > 0
-  const title = propertyId ? 'Property Assistant' : 'ROOMi Assistant'
+  const title = propertyId ? t('chat.propertyTitle') : t('chat.assistantTitle')
   const memberProfile = getMemberProfile()
 
   const headerSubtitle = useMemo(() => {
-    if (propertyId) return 'Pricing, availability and booking help for this property.'
-    if (memberProfile?.memberNick) return `Welcome back, ${memberProfile.memberNick}.`
-    return 'Ask about listings, booking or weekend pricing.'
-  }, [memberProfile?.memberNick, propertyId])
+    if (propertyId) return t('chat.propertySubtitle')
+    if (memberProfile?.memberNick) return t('chat.welcomeBack', { name: memberProfile.memberNick })
+    return t('chat.genericSubtitle')
+  }, [memberProfile?.memberNick, propertyId, t])
 
   const handleSend = async () => {
     const clean = message.trim()
@@ -226,10 +268,12 @@ export function ChatbotWidget() {
       const nextThread = data?.sendChatMessage?.thread ?? null
       if (nextThread) {
         setThread(nextThread)
-        setMessage('')
       }
+      const userMessage = data?.sendChatMessage?.userMessage
+      if (userMessage) setAwaitingAssistantId(userMessage._id)
+      setMessage('')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send message.')
+      setError(err instanceof Error ? err.message : t('chat.sendFailed'))
     } finally {
       setPending(false)
     }
@@ -253,7 +297,7 @@ export function ChatbotWidget() {
               type="button"
               onClick={() => setOpen(false)}
               className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              aria-label="Close chat"
+              aria-label={t('chat.closeChat')}
             >
               <X className="h-4 w-4" />
             </button>
@@ -263,15 +307,23 @@ export function ChatbotWidget() {
             {initializing ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Preparing your assistant...
+                {t('chat.preparing')}
               </div>
             ) : hasMessages ? (
-              messages.map((item) => (
-                <ChatBubble key={item._id} senderType={item.senderType} content={item.content} />
-              ))
+              <>
+                {messages.map((item) => (
+                  <ChatBubble key={item._id} senderType={item.senderType} content={item.content} />
+                ))}
+                {awaitingAssistantId ? (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    {t('chat.preparing')}
+                  </div>
+                ) : null}
+              </>
             ) : (
               <div className="rounded-2xl border border-dashed border-border bg-muted/30 px-4 py-5 text-sm text-muted-foreground">
-                Ask me about price, availability, booking or weekend discounts.
+                {t('chat.emptyPrompt')}
               </div>
             )}
           </div>
@@ -292,7 +344,7 @@ export function ChatbotWidget() {
                   }
                 }}
                 rows={2}
-                placeholder="Type your question..."
+                placeholder={t('chat.typeQuestion')}
                 className="max-h-32 min-h-12 flex-1 resize-none bg-transparent px-2 py-1 text-sm outline-none placeholder:text-muted-foreground"
               />
               <button
@@ -300,7 +352,7 @@ export function ChatbotWidget() {
                 onClick={() => void handleSend()}
                 disabled={pending || !message.trim()}
                 className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="Send message"
+                aria-label={t('chat.sendMessage')}
               >
                 {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </button>
@@ -315,7 +367,7 @@ export function ChatbotWidget() {
         className="flex items-center gap-3 rounded-full bg-primary px-4 py-3 text-sm font-medium text-primary-foreground shadow-xl shadow-primary/20 transition-transform hover:scale-[1.02]"
       >
         <MessageSquare className="h-4 w-4" />
-        {open ? 'Close assistant' : 'AI assistant'}
+        {open ? t('chat.closeAssistant') : t('chat.aiAssistant')}
         <Bot className="h-4 w-4 opacity-80" />
       </button>
     </div>

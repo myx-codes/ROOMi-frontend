@@ -14,13 +14,24 @@ export const SANATORIUM_META_MARKER = 'ROOMI_SANATORIUM_META:'
 
 export const PROPERTY_CATEGORIES: PropertyCategory[] = ['villa', 'hotel', 'sanatorium']
 export const LISTING_PROPERTY_TYPES: ListingPropertyType[] = ['VILLA', 'HOTEL', 'SANATORIUM']
-export const PROPERTY_STATUSES: PropertyStatus[] = ['ACTIVE', 'HOLD', 'BOOKED', 'DELETE']
+export const PROPERTY_STATUSES: PropertyStatus[] = [
+  'DRAFT',
+  'PENDING_REVIEW',
+  'ACTIVE',
+  'SUSPENDED',
+  'ARCHIVED',
+  'HOLD',
+  'BOOKED',
+  'DELETE',
+]
 
 const GRAPHQL_URL =
   import.meta.env.VITE_GRAPHQL_URL ||
-  (typeof window !== 'undefined'
-    ? `${window.location.protocol}//${window.location.hostname}:3008/graphql`
-    : 'http://localhost:3008/graphql')
+  (import.meta.env.PROD
+    ? '/graphql'
+    : typeof window !== 'undefined'
+      ? `${window.location.protocol}//${window.location.hostname}:3008/graphql`
+      : 'http://localhost:3008/graphql')
 
 export function getBackendOrigin(): string {
   if (typeof window !== 'undefined' && GRAPHQL_URL.startsWith('/')) {
@@ -81,7 +92,7 @@ export function normalizePropertyStatus(status?: string | null): PropertyStatus 
   const normalized = String(status || '').toUpperCase()
   return PROPERTY_STATUSES.includes(normalized as PropertyStatus)
     ? (normalized as PropertyStatus)
-    : 'ACTIVE'
+    : 'PENDING_REVIEW'
 }
 
 export function formatPropertyLocation(value?: string | null): string {

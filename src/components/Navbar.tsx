@@ -1,7 +1,9 @@
-import { motion, AnimatePresence } from 'framer-motion'
-import { Globe, Menu, User, X } from 'lucide-react'
+import { useMutation } from '@apollo/client/react'
+import { Globe2, Menu, Search, UserRound, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { LOGOUT } from '@/graphql/user/mutation'
+import { GuestPicker, totalGuests, type GuestCounts } from '@/components/GuestPicker'
 import {
   clearAccessToken,
   getAccountDashboardPath,
@@ -10,361 +12,233 @@ import {
 } from '@/lib/auth'
 import { languageOptions, useI18n } from '@/i18n'
 
-const navLinks = [
-  { labelKey: 'navbar.villas', type: 'route' as const, to: '/properties?category=villa' },
-  { labelKey: 'navbar.hotels', type: 'route' as const, to: '/properties?category=hotel' },
-  { labelKey: 'navbar.sanatoriums', type: 'route' as const, to: '/properties?category=sanatorium' },
-  { labelKey: 'navbar.howItWorks', type: 'section' as const, sectionId: 'how-it-works' },
-]
-
 interface NavbarProps {
   forceSolid?: boolean
 }
 
-export function Navbar({ forceSolid = false }: NavbarProps) {
+function guestCountsFromParams(params: URLSearchParams): GuestCounts {
+  const total = Math.max(1, Number(params.get('guests')) || 1)
+  return {
+    adults: Math.max(1, Number(params.get('adults')) || total),
+    children: Math.max(0, Number(params.get('children')) || 0),
+    infants: Math.max(0, Number(params.get('infants')) || 0),
+    pets: Math.max(0, Number(params.get('pets')) || 0),
+  }
+}
+
+/** Shared Airbnb-style marketplace header for every public screen. */
+export function Navbar({ forceSolid: _forceSolid = true }: NavbarProps) {
   const { language, setLanguage, t } = useI18n()
   const location = useLocation()
   const navigate = useNavigate()
-  const [isScrolled, setIsScrolled] = useState(false)
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-  const [isLangOpen, setIsLangOpen] = useState(false)
+  const params = new URLSearchParams(location.search)
+  const [query, setQuery] = useState(params.get('location') || '')
+  const [guestCounts, setGuestCounts] = useState<GuestCounts>(() => guestCountsFromParams(params))
+  const [checkIn, setCheckIn] = useState(params.get('checkIn') || '')
+  const [checkOut, setCheckOut] = useState(params.get('checkOut') || '')
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [languageOpen, setLanguageOpen] = useState(false)
   const [hasAuthSession, setHasAuthSession] = useState(isAuthenticated())
-  const langRef = useRef<HTMLDivElement>(null)
-  const isScrolledRef = useRef(false)
+  const profileRef = useRef<HTMLDivElement>(null)
+  const languageRef = useRef<HTMLDivElement>(null)
+  const [logout] = useMutation(LOGOUT)
 
   useEffect(() => {
-    const handleScroll = () => {
-      const nextIsScrolled = window.scrollY > 18
-      if (nextIsScrolled === isScrolledRef.current) {
-        return
-      }
-
-      isScrolledRef.current = nextIsScrolled
-      setIsScrolled(nextIsScrolled)
-    }
-
-    handleScroll()
-    window.addEventListener('scroll', handleScroll, { passive: true })
-    return () => window.removeEventListener('scroll', handleScroll)
-  }, [])
-
-  useEffect(() => {
-    document.body.style.overflow = isMobileMenuOpen ? 'hidden' : 'unset'
+    const syncAuth = () => setHasAuthSession(isAuthenticated())
+    const eventName = getAuthChangedEventName()
+    window.addEventListener(eventName, syncAuth)
+    window.addEventListener('storage', syncAuth)
     return () => {
-      document.body.style.overflow = 'unset'
-    }
-  }, [isMobileMenuOpen])
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (langRef.current && !langRef.current.contains(event.target as Node)) {
-        setIsLangOpen(false)
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
-
-  useEffect(() => {
-    const syncAuthState = () => setHasAuthSession(isAuthenticated())
-    const authEvent = getAuthChangedEventName()
-
-    window.addEventListener('storage', syncAuthState)
-    window.addEventListener(authEvent, syncAuthState)
-
-    return () => {
-      window.removeEventListener('storage', syncAuthState)
-      window.removeEventListener(authEvent, syncAuthState)
+      window.removeEventListener(eventName, syncAuth)
+      window.removeEventListener('storage', syncAuth)
     }
   }, [])
 
-  const handleSectionNavigation = (sectionId: string) => {
-    if (location.pathname === '/') {
-      const section = document.getElementById(sectionId)
-      if (section) {
-        section.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }
-      return
+  useEffect(() => {
+    setProfileOpen(false)
+    setLanguageOpen(false)
+    setMobileOpen(false)
+  }, [location.pathname, location.search])
+
+  useEffect(() => {
+    if (!profileOpen && !languageOpen) return undefined
+
+    const closeMenusOnOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (profileOpen && !profileRef.current?.contains(target)) setProfileOpen(false)
+      if (languageOpen && !languageRef.current?.contains(target)) setLanguageOpen(false)
     }
 
-    navigate(`/#${sectionId}`)
+    document.addEventListener('mousedown', closeMenusOnOutsideClick)
+    return () => document.removeEventListener('mousedown', closeMenusOnOutsideClick)
+  }, [profileOpen, languageOpen])
+
+  const runSearch = () => {
+    const next = new URLSearchParams()
+    const guests = totalGuests(guestCounts)
+    if (query.trim()) next.set('location', query.trim())
+    if (checkIn) next.set('checkIn', checkIn)
+    if (checkOut) next.set('checkOut', checkOut)
+    if (guests > 1) next.set('guests', String(guests))
+    if (guestCounts.adults > 1) next.set('adults', String(guestCounts.adults))
+    if (guestCounts.children > 0) next.set('children', String(guestCounts.children))
+    if (guestCounts.infants > 0) next.set('infants', String(guestCounts.infants))
+    if (guestCounts.pets > 0) next.set('pets', String(guestCounts.pets))
+    navigate(`/properties${next.toString() ? `?${next.toString()}` : ''}`)
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await logout()
+    } catch {
+      // Local state is still cleared if the API is unavailable.
+    }
     clearAccessToken()
-    setIsMobileMenuOpen(false)
-    navigate('/')
+    navigate('/properties')
   }
-
-  const useSolidStyle = forceSolid || isScrolled
-  const accountDashboardPath = getAccountDashboardPath()
 
   return (
-    <motion.nav
-      initial={{ opacity: 0, y: -20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.55 }}
-      className="fixed inset-x-0 top-0 z-50 px-4 pt-4 sm:px-6 lg:px-8"
-    >
-      <div
-        className={`mx-auto max-w-7xl rounded-[1.75rem] px-4 py-3 transition-all duration-300 sm:px-5 lg:px-6 ${
-          useSolidStyle
-            ? 'border border-white/70 bg-[rgba(255,249,241,0.85)] shadow-[0_22px_60px_-38px_rgba(21,55,50,0.45)] backdrop-blur-2xl'
-            : 'border border-white/12 bg-white/10 backdrop-blur-xl'
-        }`}
-      >
-        <div className="flex items-center justify-between gap-4">
-          <Link to="/" className="flex items-center gap-3">
-            <div
-              className={`rounded-2xl px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] ${
-                useSolidStyle ? 'bg-primary/8 text-primary' : 'bg-white/12 text-white/78'
-              }`}
-            >
-              {t('navbar.curatedStays')}
-            </div>
-            <span
-              className={`font-display text-2xl font-bold tracking-tight ${
-                useSolidStyle ? 'text-foreground' : 'text-white'
-              }`}
-            >
-              ROOM<span className="text-gold">i</span>
-            </span>
-          </Link>
+    <header className="roomi-header">
+      <div className="roomi-header__top">
+        <Link to="/properties" className="roomi-brand" aria-label="ROOMi home">
+          <span className="roomi-brand__mark">r</span>
+          <span className="roomi-brand__word">ROOMi</span>
+        </Link>
 
-          <div
-            className={`hidden items-center gap-1 rounded-full px-2 py-2 lg:flex ${
-              useSolidStyle ? 'bg-primary/5' : 'bg-white/8'
-            }`}
-          >
-            {navLinks.map((link) =>
-              link.type === 'route' ? (
-                <Link
-                  key={link.labelKey}
-                  to={link.to}
-                  className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                    useSolidStyle
-                      ? 'text-foreground hover:bg-primary/8'
-                      : 'text-white/88 hover:bg-white/10'
-                  }`}
-                >
-                  {t(link.labelKey)}
-                </Link>
-              ) : (
-                <button
-                  key={link.labelKey}
-                  onClick={() => handleSectionNavigation(link.sectionId)}
-                  className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                    useSolidStyle
-                      ? 'text-foreground hover:bg-primary/8'
-                      : 'text-white/88 hover:bg-white/10'
-                  }`}
-                >
-                  {t(link.labelKey)}
-                </button>
-              ),
+        <form
+          className="roomi-search"
+          onSubmit={(event) => {
+            event.preventDefault()
+            runSearch()
+          }}
+        >
+          <label className="roomi-search__field roomi-search__field--where">
+            <span>{t('common.destination')}</span>
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t('hero.destinationPlaceholder')}
+              aria-label={t('common.destination')}
+            />
+          </label>
+          <span className="roomi-search__divider" />
+          <label className="roomi-search__field">
+            <span>{t('common.checkIn')}</span>
+            <input type="date" value={checkIn} onChange={(event) => setCheckIn(event.target.value)} aria-label={t('common.checkIn')} />
+          </label>
+          <span className="roomi-search__divider" />
+          <label className="roomi-search__field">
+            <span>{t('common.checkOut')}</span>
+            <input type="date" value={checkOut} onChange={(event) => setCheckOut(event.target.value)} aria-label={t('common.checkOut')} />
+          </label>
+          <span className="roomi-search__divider" />
+          <GuestPicker
+            value={guestCounts}
+            onChange={setGuestCounts}
+            compact
+            className="roomi-search__guest-picker"
+          />
+          <span className="roomi-search__divider roomi-search__guest-divider" />
+          <button type="submit" className="roomi-search__button" aria-label={t('common.search')}>
+            <Search size={18} strokeWidth={2.5} />
+          </button>
+        </form>
+
+        <div className="roomi-header__actions">
+          <div ref={languageRef} className="roomi-language">
+            <button
+              type="button"
+              className="roomi-icon-button roomi-icon-button--language"
+              onClick={() => setLanguageOpen((open) => !open)}
+              aria-label={t('common.language')}
+            >
+              <Globe2 size={18} />
+              <span>{language.toUpperCase()}</span>
+            </button>
+            {languageOpen && (
+              <div className="roomi-popover roomi-language__menu">
+                {languageOptions.map((option) => (
+                  <button
+                    type="button"
+                    key={option.code}
+                    onClick={() => {
+                      setLanguage(option.code)
+                      setLanguageOpen(false)
+                    }}
+                    className={language === option.code ? 'is-active' : ''}
+                  >
+                    {option.labels[language]}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
-
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="relative" ref={langRef}>
-              <button
-                onClick={() => setIsLangOpen((open) => !open)}
-                className={`inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition-colors ${
-                  useSolidStyle
-                    ? 'text-foreground hover:bg-primary/8'
-                    : 'text-white hover:bg-white/10'
-                }`}
-              >
-                <Globe className="h-4 w-4" />
-                <span className="hidden uppercase sm:inline">{language}</span>
-              </button>
-
-              <AnimatePresence>
-                {isLangOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8, scale: 0.96 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                    transition={{ duration: 0.16 }}
-                    className="absolute right-0 mt-2 w-44 overflow-hidden rounded-[1.5rem] border border-white/70 bg-[rgba(255,249,241,0.96)] shadow-xl backdrop-blur-2xl"
-                  >
-                    {languageOptions.map((lang) => (
-                      <button
-                        key={lang.code}
-                        onClick={() => {
-                          setLanguage(lang.code)
-                          setIsLangOpen(false)
-                        }}
-                        className={`w-full px-4 py-3 text-left text-sm transition-colors hover:bg-primary/6 ${
-                          language === lang.code ? 'font-semibold text-gold' : 'text-foreground'
-                        }`}
-                      >
-                        {t(lang.labelKey)}
-                      </button>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            {hasAuthSession ? (
-              <>
-                <Link
-                  to={accountDashboardPath}
-                  className={`hidden items-center gap-2 rounded-full px-4 py-2 text-sm font-medium md:inline-flex ${
-                    useSolidStyle
-                      ? 'text-foreground hover:bg-primary/8'
-                      : 'text-white hover:bg-white/10'
-                  }`}
-                >
-                  <User className="h-4 w-4" />
-                  {t('common.myAccount')}
-                </Link>
-                <button
-                  onClick={handleLogout}
-                  className={`hidden rounded-full px-5 py-2 text-sm font-semibold md:inline-flex ${
-                    useSolidStyle
-                      ? 'bg-primary text-primary-foreground hover:bg-[#204640]'
-                      : 'bg-white text-foreground hover:bg-[#f4e3cc]'
-                  }`}
-                >
-                  {t('common.logout')}
-                </button>
-              </>
-            ) : (
-              <>
-                <Link
-                  to="/sign-in"
-                  className={`hidden items-center gap-2 rounded-full px-4 py-2 text-sm font-medium md:inline-flex ${
-                    useSolidStyle
-                      ? 'text-foreground hover:bg-primary/8'
-                      : 'text-white hover:bg-white/10'
-                  }`}
-                >
-                  <User className="h-4 w-4" />
-                  {t('common.signIn')}
-                </Link>
-                <Link
-                  to="/sign-up"
-                  className={`hidden rounded-full px-5 py-2 text-sm font-semibold md:inline-flex ${
-                    useSolidStyle
-                      ? 'bg-primary text-primary-foreground hover:bg-[#204640]'
-                      : 'bg-white text-foreground hover:bg-[#f4e3cc]'
-                  }`}
-                >
-                  {t('common.signUp')}
-                </Link>
-              </>
-            )}
-
+          <div ref={profileRef} className="roomi-profile-menu-wrap">
             <button
-              onClick={() => setIsMobileMenuOpen((open) => !open)}
-              className={`inline-flex rounded-full p-2.5 lg:hidden ${
-                useSolidStyle
-                  ? 'text-foreground hover:bg-primary/8'
-                  : 'text-white hover:bg-white/10'
-              }`}
-              aria-label={isMobileMenuOpen ? 'Close menu' : 'Open menu'}
+              type="button"
+              className="roomi-profile-trigger"
+              onClick={() => setProfileOpen((open) => !open)}
+              aria-expanded={profileOpen}
+              aria-label={t('common.myAccount')}
             >
-              {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              <Menu size={17} />
+              <UserRound size={19} fill="currentColor" />
             </button>
+            {profileOpen && (
+              <div className="roomi-popover roomi-profile-menu">
+                {hasAuthSession ? (
+                  <>
+                    <Link to={getAccountDashboardPath()}>{t('common.profile')}</Link>
+                    <Link to="/my-page/bookings">{t('common.bookings')}</Link>
+                    <button type="button" onClick={handleLogout}>{t('common.logout')}</button>
+                  </>
+                ) : (
+                  <>
+                    <Link to="/sign-up" className="roomi-popover__strong">{t('common.signUp')}</Link>
+                    <Link to="/sign-in">{t('common.signIn')}</Link>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      <AnimatePresence>
-        {isMobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 14 }}
-            transition={{ duration: 0.2 }}
-            className="mx-auto mt-3 max-w-7xl overflow-hidden rounded-[2rem] border border-white/70 bg-[rgba(255,249,241,0.95)] shadow-[0_28px_70px_-38px_rgba(21,55,50,0.5)] backdrop-blur-2xl lg:hidden"
-          >
-            <div className="space-y-2 p-5">
-              {navLinks.map((link) =>
-                link.type === 'route' ? (
-                  <Link
-                    key={link.labelKey}
-                    to={link.to}
-                    className="block rounded-[1.25rem] px-4 py-3 text-base font-medium text-foreground transition-colors hover:bg-primary/6"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    {t(link.labelKey)}
-                  </Link>
-                ) : (
-                  <button
-                    key={link.labelKey}
-                    onClick={() => {
-                      handleSectionNavigation(link.sectionId)
-                      setIsMobileMenuOpen(false)
-                    }}
-                    className="block w-full rounded-[1.25rem] px-4 py-3 text-left text-base font-medium text-foreground transition-colors hover:bg-primary/6"
-                  >
-                    {t(link.labelKey)}
-                  </button>
-                ),
-              )}
-            </div>
+      <div className="roomi-header__bottom">
+        <Link to="/properties" className="roomi-header__mobile-search">
+          <Search size={17} />
+          <span>{query || t('common.destination')}</span>
+        </Link>
+        <button type="button" className="roomi-mobile-menu" onClick={() => setMobileOpen((open) => !open)}>
+          {mobileOpen ? <X size={19} /> : <Menu size={19} />}
+        </button>
+      </div>
 
-            <div className="border-t border-primary/8 p-5">
-              <div className="flex flex-wrap gap-2">
-                {languageOptions.map((lang) => (
-                  <button
-                    key={lang.code}
-                    onClick={() => setLanguage(lang.code)}
-                    className={`rounded-full px-4 py-2 text-sm font-medium ${
-                      language === lang.code
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-primary/6 text-foreground'
-                    }`}
-                  >
-                    {t(lang.labelKey)}
-                  </button>
-                ))}
-              </div>
-
-              <div className="mt-4 grid gap-3">
-                {hasAuthSession ? (
-                  <>
-                    <Link
-                      to={accountDashboardPath}
-                      className="rounded-full border border-primary/10 px-5 py-3 text-center text-sm font-medium text-foreground"
-                      onClick={() => setIsMobileMenuOpen(false)}
-                    >
-                      {t('common.myAccount')}
-                    </Link>
-                    <button
-                      onClick={handleLogout}
-                      className="rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground"
-                    >
-                      {t('common.logout')}
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <Link
-                      to="/sign-in"
-                      className="rounded-full border border-primary/10 px-5 py-3 text-center text-sm font-medium text-foreground"
-                      onClick={() => setIsMobileMenuOpen(false)}
-                    >
-                      {t('common.signIn')}
-                    </Link>
-                    <Link
-                      to="/sign-up"
-                      className="rounded-full bg-primary px-5 py-3 text-center text-sm font-semibold text-primary-foreground"
-                      onClick={() => setIsMobileMenuOpen(false)}
-                    >
-                      {t('common.signUp')}
-                    </Link>
-                  </>
-                )}
-              </div>
+      {mobileOpen && (
+        <div className="roomi-mobile-panel">
+          <Link to="/properties">{t('common.all')}</Link>
+          <Link to="/properties?category=villa">{t('categories.villasTitle')}</Link>
+          <Link to="/properties?category=hotel">{t('categories.hotelsTitle')}</Link>
+          <Link to="/properties?category=sanatorium">{t('categories.sanatoriumsTitle')}</Link>
+          <Link to="/properties?category=apartment">{t('categories.apartmentsTitle')}</Link>
+          <div className="roomi-mobile-language">
+            <span><Globe2 size={16} /> {t('common.language')}</span>
+            <div>
+              {languageOptions.map((option) => (
+                <button
+                  key={option.code}
+                  type="button"
+                  className={language === option.code ? 'is-active' : ''}
+                  onClick={() => setLanguage(option.code)}
+                >
+                  {option.labels[language]}
+                </button>
+              ))}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.nav>
+          </div>
+        </div>
+      )}
+    </header>
   )
 }

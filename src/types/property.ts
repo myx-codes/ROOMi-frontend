@@ -3,7 +3,15 @@ export type PropertyCategory = 'villa' | 'hotel' | 'sanatorium'
 export type PropertyType = 'VILLA' | 'HOTEL' | 'SANATORIUM' | 'APARTMENT' | 'RESORT'
 export type ListingPropertyType = Extract<PropertyType, 'VILLA' | 'HOTEL' | 'SANATORIUM'>
 
-export type PropertyStatus = 'ACTIVE' | 'HOLD' | 'BOOKED' | 'DELETE'
+export type PropertyStatus =
+  | 'DRAFT'
+  | 'PENDING_REVIEW'
+  | 'ACTIVE'
+  | 'SUSPENDED'
+  | 'ARCHIVED'
+  | 'HOLD'
+  | 'BOOKED'
+  | 'DELETE'
 export type SortDirection = 'ASC' | 'DESC'
 
 export interface PropertyListItem {

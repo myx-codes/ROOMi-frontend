@@ -32,6 +32,12 @@ export const LOGIN = gql`
   }
 `;
 
+export const LOGOUT = gql`
+  mutation Logout {
+    logout
+  }
+`
+
 
 export const SIGN_UP = gql `
 mutation Signup($input: MemberInput!) {
@@ -205,6 +211,59 @@ mutation CreateBooking($input: BookingInput!) {
         }
     }
 }
+`
+
+export const CREATE_BOOKABLE_UNIT = gql`
+  mutation CreateBookableUnit($input: BookableUnitInput!) {
+    createBookableUnit(input: $input) {
+      _id
+      propertyId
+      unitType
+      name
+      code
+      inventoryCount
+      basePrice
+      rateModel
+      bookingMode
+      maxGuests
+      includedGuests
+      bedrooms
+      beds
+      bathrooms
+      cleaningFee
+      petFee
+      extraGuestFee
+      petsAllowed
+      infantsAllowed
+      amenities
+      status
+    }
+  }
+`
+
+export const ARCHIVE_BOOKABLE_UNIT = gql`
+  mutation ArchiveBookableUnit($unitId: String!) {
+    archiveBookableUnit(unitId: $unitId) {
+      _id
+      status
+    }
+  }
+`
+
+export const SET_UNIT_CALENDAR_DATES = gql`
+  mutation SetUnitCalendarDates($input: UnitCalendarInput!) {
+    setUnitCalendarDates(input: $input)
+  }
+`
+
+export const CANCEL_BOOKING = gql`
+  mutation CancelBooking($bookingId: String!) {
+    cancelBooking(bookingId: $bookingId) {
+      _id
+      bookingStatus
+      updatedAt
+    }
+  }
 `
 
 export const LIKE_TARGET_PROPERTY = gql`

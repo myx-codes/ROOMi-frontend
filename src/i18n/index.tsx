@@ -100,6 +100,13 @@ export function I18nProvider({ children }: PropsWithChildren) {
     if (typeof window === 'undefined') return
     window.localStorage.setItem(STORAGE_KEY, language)
     document.documentElement.lang = intlLocales[language]
+    document.title = getNestedValue(translations[language], 'common.siteTitle') || 'ROOMi'
+    const description = getNestedValue(translations[language], 'common.siteDescription')
+    if (description) {
+      document.querySelector('meta[name="description"]')?.setAttribute('content', description)
+      document.querySelector('meta[property="og:description"]')?.setAttribute('content', description)
+      document.querySelector('meta[name="twitter:description"]')?.setAttribute('content', description)
+    }
   }, [language])
 
   const value = useMemo<I18nContextValue>(() => {
@@ -153,11 +160,17 @@ export function I18nProvider({ children }: PropsWithChildren) {
       switch (normalizeStatus(value)) {
         case 'CONFIRMED':
           return language === 'ko' ? '확정됨' : language === 'uz' ? 'Tasdiqlangan' : 'Confirmed'
+        case 'REQUESTED':
+          return language === 'ko' ? '요청됨' : language === 'uz' ? 'So‘rov yuborilgan' : 'Requested'
+        case 'AWAITING_PAYMENT':
+          return language === 'ko' ? '결제 대기' : language === 'uz' ? 'To‘lov kutilmoqda' : 'Awaiting payment'
         case 'WAITING':
         case 'PENDING':
           return language === 'ko' ? '대기 중' : language === 'uz' ? 'Kutilmoqda' : 'Waiting'
         case 'CANCELLED':
           return language === 'ko' ? '취소됨' : language === 'uz' ? 'Bekor qilingan' : 'Cancelled'
+        case 'EXPIRED':
+          return language === 'ko' ? '만료됨' : language === 'uz' ? 'Muddati tugagan' : 'Expired'
         case 'FINISHED':
         case 'COMPLETED':
           return language === 'ko' ? '완료됨' : language === 'uz' ? 'Tugallangan' : 'Completed'
@@ -170,11 +183,17 @@ export function I18nProvider({ children }: PropsWithChildren) {
       switch (normalizeStatus(value)) {
         case 'CONFIRMED':
           return t('agent.confirmed')
+        case 'REQUESTED':
+          return language === 'ko' ? '요청' : language === 'uz' ? 'So‘rov' : 'Requested'
+        case 'AWAITING_PAYMENT':
+          return language === 'ko' ? '결제 대기' : language === 'uz' ? 'To‘lov' : 'Payment'
         case 'WAITING':
         case 'PENDING':
           return language === 'ko' ? '대기' : language === 'uz' ? 'Kutilmoqda' : 'Waiting'
         case 'CANCELLED':
           return language === 'ko' ? '취소' : language === 'uz' ? 'Bekor' : 'Cancelled'
+        case 'EXPIRED':
+          return language === 'ko' ? '만료' : language === 'uz' ? 'Tugagan' : 'Expired'
         case 'FINISHED':
         case 'COMPLETED':
           return t('agent.completed')
@@ -211,8 +230,16 @@ export function I18nProvider({ children }: PropsWithChildren) {
 
     const propertyStatusLabel = (value?: string | null) => {
       switch (normalizeStatus(value)) {
+        case 'DRAFT':
+          return language === 'ko' ? '임시 저장' : language === 'uz' ? 'Qoralama' : 'Draft'
+        case 'PENDING_REVIEW':
+          return language === 'ko' ? '검토 대기' : language === 'uz' ? 'Tekshiruvda' : 'Pending review'
         case 'ACTIVE':
           return language === 'ko' ? '활성' : language === 'uz' ? 'Faol' : 'ACTIVE'
+        case 'SUSPENDED':
+          return language === 'ko' ? '중지됨' : language === 'uz' ? 'To‘xtatilgan' : 'Suspended'
+        case 'ARCHIVED':
+          return language === 'ko' ? '보관됨' : language === 'uz' ? 'Arxivlangan' : 'Archived'
         case 'HOLD':
           return language === 'ko' ? '보류' : language === 'uz' ? 'Kutishda' : 'HOLD'
         case 'BOOKED':

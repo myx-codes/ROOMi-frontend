@@ -90,4 +90,3 @@ export const SEND_CHAT_MESSAGE = gql`
     }
   }
 `
-
